@@ -4927,6 +4927,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "merkle"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bcs",
+ "eyre",
+ "fastcrypto",
+ "itertools",
+ "proptest",
+ "rocksdb",
+ "serde",
+ "sui-storage",
+ "sui-types",
+ "tempfile",
+ "tokio",
+ "typed-store",
+ "typed-store-derive",
+]
+
+[[package]]
 name = "merlin"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
