@@ -3,13 +3,10 @@
 
 use crate::base_types::{TransactionDigest, VersionNumber};
 use crate::committee::{Committee, EpochId};
-use crate::digests::{
-    CheckpointContentsDigest, CheckpointDigest, TransactionEffectsDigest, TransactionEventsDigest,
-};
+use crate::digests::{CheckpointContentsDigest, CheckpointDigest, TransactionEventsDigest};
 use crate::effects::{TransactionEffects, TransactionEvents};
 use crate::error::SuiError;
 use crate::execution::{ExecutionResults, LoadedChildObjectMetadata};
-use crate::message_envelope::Message;
 use crate::messages_checkpoint::{
     CheckpointContents, CheckpointSequenceNumber, FullCheckpointContents, VerifiedCheckpoint,
     VerifiedCheckpointContents,
@@ -307,9 +304,7 @@ impl<S: ChildObjectResolver> ChildObjectResolver for &mut S {
     }
 }
 
-pub trait ReadStore {
-    type Error;
-
+pub trait ReadStore: Store + CommitteeStore + TransactionStore + EventStore {
     fn get_checkpoint_by_digest(
         &self,
         digest: &CheckpointDigest,
@@ -335,28 +330,9 @@ pub trait ReadStore {
         &self,
         digest: &CheckpointContentsDigest,
     ) -> Result<Option<FullCheckpointContents>, Self::Error>;
-
-    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>, Self::Error>;
-
-    fn get_transaction_block(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Result<Option<VerifiedTransaction>, Self::Error>;
-
-    fn get_transaction_effects(
-        &self,
-        digest: &TransactionEffectsDigest,
-    ) -> Result<Option<TransactionEffects>, Self::Error>;
-
-    fn get_transaction_events(
-        &self,
-        digest: &TransactionEventsDigest,
-    ) -> Result<Option<TransactionEvents>, Self::Error>;
 }
 
 impl<T: ReadStore> ReadStore for &T {
-    type Error = T::Error;
-
     fn get_checkpoint_by_digest(
         &self,
         digest: &CheckpointDigest,
@@ -395,31 +371,6 @@ impl<T: ReadStore> ReadStore for &T {
         digest: &CheckpointContentsDigest,
     ) -> Result<Option<FullCheckpointContents>, Self::Error> {
         ReadStore::get_full_checkpoint_contents(*self, digest)
-    }
-
-    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>, Self::Error> {
-        ReadStore::get_committee(*self, epoch)
-    }
-
-    fn get_transaction_block(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Result<Option<VerifiedTransaction>, Self::Error> {
-        ReadStore::get_transaction_block(*self, digest)
-    }
-
-    fn get_transaction_effects(
-        &self,
-        digest: &TransactionEffectsDigest,
-    ) -> Result<Option<TransactionEffects>, Self::Error> {
-        ReadStore::get_transaction_effects(*self, digest)
-    }
-
-    fn get_transaction_events(
-        &self,
-        digest: &TransactionEventsDigest,
-    ) -> Result<Option<TransactionEvents>, Self::Error> {
-        ReadStore::get_transaction_events(*self, digest)
     }
 }
 
@@ -484,7 +435,7 @@ pub struct InMemoryStore {
     sequence_number_to_digest: HashMap<CheckpointSequenceNumber, CheckpointDigest>,
     checkpoint_contents: HashMap<CheckpointContentsDigest, CheckpointContents>,
     transactions: HashMap<TransactionDigest, VerifiedTransaction>,
-    effects: HashMap<TransactionEffectsDigest, TransactionEffects>,
+    effects: HashMap<TransactionDigest, TransactionEffects>,
     events: HashMap<TransactionEventsDigest, TransactionEvents>,
 
     epoch_to_committee: Vec<Committee>,
@@ -567,7 +518,7 @@ impl InMemoryStore {
             self.transactions
                 .insert(*tx.transaction.digest(), tx.transaction.to_owned());
             self.effects
-                .insert(tx.effects.digest(), tx.effects.to_owned());
+                .insert(*tx.transaction.digest(), tx.effects.to_owned());
         }
         self.contents_digest_to_sequence_number
             .insert(checkpoint.content_digest, *checkpoint.sequence_number());
@@ -621,9 +572,8 @@ impl InMemoryStore {
             .clone();
         let contents_digest = *contents.checkpoint_contents().digest();
         for content in contents.iter() {
-            let effects_digest = content.effects.digest();
             let tx_digest = content.transaction.digest();
-            self.effects.remove(&effects_digest);
+            self.effects.remove(tx_digest);
             self.transactions.remove(tx_digest);
         }
         self.checkpoint_contents.remove(&contents_digest);
@@ -697,7 +647,7 @@ impl InMemoryStore {
 
     pub fn get_transaction_effects(
         &self,
-        digest: &TransactionEffectsDigest,
+        digest: &TransactionDigest,
     ) -> Option<&TransactionEffects> {
         self.effects.get(digest)
     }
@@ -723,9 +673,52 @@ impl SharedInMemoryStore {
     }
 }
 
-impl ReadStore for SharedInMemoryStore {
+impl Store for SharedInMemoryStore {
     type Error = Infallible;
+}
 
+impl CommitteeStore for SharedInMemoryStore {
+    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>, Self::Error> {
+        self.inner()
+            .get_committee_by_epoch(epoch)
+            .cloned()
+            .map(Arc::new)
+            .pipe(Ok)
+    }
+}
+
+impl TransactionStore for SharedInMemoryStore {
+    fn get_transaction(
+        &self,
+        digest: &TransactionDigest,
+    ) -> Result<Option<VerifiedTransaction>, Self::Error> {
+        self.inner().get_transaction_block(digest).cloned().pipe(Ok)
+    }
+
+    fn get_transaction_effects(
+        &self,
+        digest: &TransactionDigest,
+    ) -> Result<Option<TransactionEffects>, Self::Error> {
+        self.inner()
+            .get_transaction_effects(digest)
+            .cloned()
+            .pipe(Ok)
+    }
+}
+
+impl EventStore for SharedInMemoryStore {
+    fn get_events(
+        &self,
+        event_digest: &TransactionEventsDigest,
+    ) -> Result<Option<TransactionEvents>, Self::Error> {
+        self.inner()
+            .get_transaction_events(event_digest)
+            .cloned()
+            .pipe(Ok)
+    }
+}
+
+impl ReadStore for SharedInMemoryStore {
     fn get_checkpoint_by_digest(
         &self,
         digest: &CheckpointDigest,
@@ -798,41 +791,6 @@ impl ReadStore for SharedInMemoryStore {
             })
             .transpose()
             .map(|contents| contents.flatten())
-    }
-
-    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>, Self::Error> {
-        self.inner()
-            .get_committee_by_epoch(epoch)
-            .cloned()
-            .map(Arc::new)
-            .pipe(Ok)
-    }
-
-    fn get_transaction_block(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Result<Option<VerifiedTransaction>, Self::Error> {
-        self.inner().get_transaction_block(digest).cloned().pipe(Ok)
-    }
-
-    fn get_transaction_effects(
-        &self,
-        digest: &TransactionEffectsDigest,
-    ) -> Result<Option<TransactionEffects>, Self::Error> {
-        self.inner()
-            .get_transaction_effects(digest)
-            .cloned()
-            .pipe(Ok)
-    }
-
-    fn get_transaction_events(
-        &self,
-        digest: &TransactionEventsDigest,
-    ) -> Result<Option<TransactionEvents>, Self::Error> {
-        self.inner()
-            .get_transaction_events(digest)
-            .cloned()
-            .pipe(Ok)
     }
 }
 
@@ -996,7 +954,7 @@ impl ObjectStore for BTreeMap<ObjectID, Object> {
     }
 }
 
-impl<T: ObjectStore> ObjectStore for Arc<T> {
+impl<T: ObjectStore + ?Sized> ObjectStore for Arc<T> {
     fn get_object(&self, object_id: &ObjectID) -> Result<Option<Object>, SuiError> {
         self.as_ref().get_object(object_id)
     }
@@ -1051,9 +1009,42 @@ impl SingleCheckpointSharedInMemoryStore {
     }
 }
 
-impl ReadStore for SingleCheckpointSharedInMemoryStore {
+impl Store for SingleCheckpointSharedInMemoryStore {
     type Error = Infallible;
+}
 
+impl CommitteeStore for SingleCheckpointSharedInMemoryStore {
+    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>, Self::Error> {
+        self.0.get_committee(epoch)
+    }
+}
+
+impl TransactionStore for SingleCheckpointSharedInMemoryStore {
+    fn get_transaction(
+        &self,
+        tx_digest: &TransactionDigest,
+    ) -> Result<Option<VerifiedTransaction>, Self::Error> {
+        self.0.get_transaction(tx_digest)
+    }
+
+    fn get_transaction_effects(
+        &self,
+        tx_digest: &TransactionDigest,
+    ) -> Result<Option<TransactionEffects>, Self::Error> {
+        self.0.get_transaction_effects(tx_digest)
+    }
+}
+
+impl EventStore for SingleCheckpointSharedInMemoryStore {
+    fn get_events(
+        &self,
+        event_digest: &TransactionEventsDigest,
+    ) -> Result<Option<TransactionEvents>, Self::Error> {
+        self.0.get_events(event_digest)
+    }
+}
+
+impl ReadStore for SingleCheckpointSharedInMemoryStore {
     fn get_checkpoint_by_digest(
         &self,
         digest: &CheckpointDigest,
@@ -1093,31 +1084,6 @@ impl ReadStore for SingleCheckpointSharedInMemoryStore {
         digest: &CheckpointContentsDigest,
     ) -> Result<Option<FullCheckpointContents>, Self::Error> {
         self.0.get_full_checkpoint_contents(digest)
-    }
-
-    fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>, Self::Error> {
-        self.0.get_committee(epoch)
-    }
-
-    fn get_transaction_block(
-        &self,
-        digest: &TransactionDigest,
-    ) -> Result<Option<VerifiedTransaction>, Self::Error> {
-        self.0.get_transaction_block(digest)
-    }
-
-    fn get_transaction_effects(
-        &self,
-        digest: &TransactionEffectsDigest,
-    ) -> Result<Option<TransactionEffects>, Self::Error> {
-        self.0.get_transaction_effects(digest)
-    }
-
-    fn get_transaction_events(
-        &self,
-        digest: &TransactionEventsDigest,
-    ) -> Result<Option<TransactionEvents>, Self::Error> {
-        self.0.get_transaction_events(digest)
     }
 }
 
@@ -1190,5 +1156,489 @@ where
 {
     fn as_object_store(&self) -> &dyn ObjectStore {
         self
+    }
+}
+
+pub use traits::*;
+mod traits {
+    use std::sync::Arc;
+
+    use crate::{
+        base_types::{ObjectID, VersionNumber},
+        committee::{Committee, EpochId},
+        digests::{
+            CheckpointContentsDigest, CheckpointDigest, TransactionDigest, TransactionEventsDigest,
+        },
+        effects::{TransactionEffects, TransactionEvents},
+        messages_checkpoint::{CheckpointContents, CheckpointSequenceNumber, VerifiedCheckpoint},
+        object::Object,
+        transaction::VerifiedTransaction,
+    };
+
+    use super::ObjectKey;
+
+    pub trait Store {
+        type Error;
+    }
+
+    impl<T: Store + ?Sized> Store for &T {
+        type Error = T::Error;
+    }
+
+    impl<T: Store + ?Sized> Store for Box<T> {
+        type Error = T::Error;
+    }
+
+    impl<T: Store + ?Sized> Store for Arc<T> {
+        type Error = T::Error;
+    }
+
+    pub trait CheckpointStore: Store {
+        fn get_latest_checkpoint(&self) -> Result<VerifiedCheckpoint, Self::Error>;
+
+        fn get_checkpoint_by_digest(
+            &self,
+            digest: &CheckpointDigest,
+        ) -> Result<Option<VerifiedCheckpoint>, Self::Error>;
+
+        fn get_checkpoint_by_sequence_number(
+            &self,
+            sequence_number: CheckpointSequenceNumber,
+        ) -> Result<Option<VerifiedCheckpoint>, Self::Error>;
+
+        fn get_checkpoint_contents_by_digest(
+            &self,
+            digest: &CheckpointContentsDigest,
+        ) -> Result<Option<CheckpointContents>, Self::Error>;
+
+        fn get_checkpoint_contents_by_sequence_number(
+            &self,
+            sequence_number: CheckpointSequenceNumber,
+        ) -> Result<Option<CheckpointContents>, Self::Error>;
+    }
+
+    impl<T: CheckpointStore + ?Sized> CheckpointStore for &T {
+        fn get_latest_checkpoint(&self) -> Result<VerifiedCheckpoint, Self::Error> {
+            (*self).get_latest_checkpoint()
+        }
+
+        fn get_checkpoint_by_digest(
+            &self,
+            digest: &CheckpointDigest,
+        ) -> Result<Option<VerifiedCheckpoint>, Self::Error> {
+            (*self).get_checkpoint_by_digest(digest)
+        }
+
+        fn get_checkpoint_by_sequence_number(
+            &self,
+            sequence_number: CheckpointSequenceNumber,
+        ) -> Result<Option<VerifiedCheckpoint>, Self::Error> {
+            (*self).get_checkpoint_by_sequence_number(sequence_number)
+        }
+
+        fn get_checkpoint_contents_by_digest(
+            &self,
+            digest: &CheckpointContentsDigest,
+        ) -> Result<Option<CheckpointContents>, Self::Error> {
+            (*self).get_checkpoint_contents_by_digest(digest)
+        }
+
+        fn get_checkpoint_contents_by_sequence_number(
+            &self,
+            sequence_number: CheckpointSequenceNumber,
+        ) -> Result<Option<CheckpointContents>, Self::Error> {
+            (*self).get_checkpoint_contents_by_sequence_number(sequence_number)
+        }
+    }
+
+    impl<T: CheckpointStore + ?Sized> CheckpointStore for Box<T> {
+        fn get_latest_checkpoint(&self) -> Result<VerifiedCheckpoint, Self::Error> {
+            (**self).get_latest_checkpoint()
+        }
+
+        fn get_checkpoint_by_digest(
+            &self,
+            digest: &CheckpointDigest,
+        ) -> Result<Option<VerifiedCheckpoint>, Self::Error> {
+            (**self).get_checkpoint_by_digest(digest)
+        }
+
+        fn get_checkpoint_by_sequence_number(
+            &self,
+            sequence_number: CheckpointSequenceNumber,
+        ) -> Result<Option<VerifiedCheckpoint>, Self::Error> {
+            (**self).get_checkpoint_by_sequence_number(sequence_number)
+        }
+
+        fn get_checkpoint_contents_by_digest(
+            &self,
+            digest: &CheckpointContentsDigest,
+        ) -> Result<Option<CheckpointContents>, Self::Error> {
+            (**self).get_checkpoint_contents_by_digest(digest)
+        }
+
+        fn get_checkpoint_contents_by_sequence_number(
+            &self,
+            sequence_number: CheckpointSequenceNumber,
+        ) -> Result<Option<CheckpointContents>, Self::Error> {
+            (**self).get_checkpoint_contents_by_sequence_number(sequence_number)
+        }
+    }
+
+    impl<T: CheckpointStore + ?Sized> CheckpointStore for Arc<T> {
+        fn get_latest_checkpoint(&self) -> Result<VerifiedCheckpoint, Self::Error> {
+            (**self).get_latest_checkpoint()
+        }
+
+        fn get_checkpoint_by_digest(
+            &self,
+            digest: &CheckpointDigest,
+        ) -> Result<Option<VerifiedCheckpoint>, Self::Error> {
+            (**self).get_checkpoint_by_digest(digest)
+        }
+
+        fn get_checkpoint_by_sequence_number(
+            &self,
+            sequence_number: CheckpointSequenceNumber,
+        ) -> Result<Option<VerifiedCheckpoint>, Self::Error> {
+            (**self).get_checkpoint_by_sequence_number(sequence_number)
+        }
+
+        fn get_checkpoint_contents_by_digest(
+            &self,
+            digest: &CheckpointContentsDigest,
+        ) -> Result<Option<CheckpointContents>, Self::Error> {
+            (**self).get_checkpoint_contents_by_digest(digest)
+        }
+
+        fn get_checkpoint_contents_by_sequence_number(
+            &self,
+            sequence_number: CheckpointSequenceNumber,
+        ) -> Result<Option<CheckpointContents>, Self::Error> {
+            (**self).get_checkpoint_contents_by_sequence_number(sequence_number)
+        }
+    }
+
+    pub trait TransactionStore: Store {
+        fn get_transaction(
+            &self,
+            tx_digest: &TransactionDigest,
+        ) -> Result<Option<VerifiedTransaction>, Self::Error>;
+
+        fn multi_get_transactions(
+            &self,
+            tx_digests: &[TransactionDigest],
+        ) -> Result<Vec<Option<VerifiedTransaction>>, Self::Error> {
+            tx_digests
+                .iter()
+                .map(|digest| self.get_transaction(digest))
+                .collect::<Result<Vec<_>, _>>()
+        }
+
+        fn get_transaction_effects(
+            &self,
+            tx_digest: &TransactionDigest,
+        ) -> Result<Option<TransactionEffects>, Self::Error>;
+
+        fn multi_get_transaction_effects(
+            &self,
+            tx_digests: &[TransactionDigest],
+        ) -> Result<Vec<Option<TransactionEffects>>, Self::Error> {
+            tx_digests
+                .iter()
+                .map(|digest| self.get_transaction_effects(digest))
+                .collect::<Result<Vec<_>, _>>()
+        }
+    }
+
+    impl<T: TransactionStore + ?Sized> TransactionStore for &T {
+        fn get_transaction(
+            &self,
+            tx_digest: &TransactionDigest,
+        ) -> Result<Option<VerifiedTransaction>, Self::Error> {
+            (*self).get_transaction(tx_digest)
+        }
+
+        fn multi_get_transactions(
+            &self,
+            tx_digests: &[TransactionDigest],
+        ) -> Result<Vec<Option<VerifiedTransaction>>, Self::Error> {
+            (*self).multi_get_transactions(tx_digests)
+        }
+
+        fn get_transaction_effects(
+            &self,
+            tx_digest: &TransactionDigest,
+        ) -> Result<Option<TransactionEffects>, Self::Error> {
+            (*self).get_transaction_effects(tx_digest)
+        }
+
+        fn multi_get_transaction_effects(
+            &self,
+            tx_digests: &[TransactionDigest],
+        ) -> Result<Vec<Option<TransactionEffects>>, Self::Error> {
+            (*self).multi_get_transaction_effects(tx_digests)
+        }
+    }
+
+    impl<T: TransactionStore + ?Sized> TransactionStore for Box<T> {
+        fn get_transaction(
+            &self,
+            tx_digest: &TransactionDigest,
+        ) -> Result<Option<VerifiedTransaction>, Self::Error> {
+            (**self).get_transaction(tx_digest)
+        }
+
+        fn multi_get_transactions(
+            &self,
+            tx_digests: &[TransactionDigest],
+        ) -> Result<Vec<Option<VerifiedTransaction>>, Self::Error> {
+            (**self).multi_get_transactions(tx_digests)
+        }
+
+        fn get_transaction_effects(
+            &self,
+            tx_digest: &TransactionDigest,
+        ) -> Result<Option<TransactionEffects>, Self::Error> {
+            (**self).get_transaction_effects(tx_digest)
+        }
+
+        fn multi_get_transaction_effects(
+            &self,
+            tx_digests: &[TransactionDigest],
+        ) -> Result<Vec<Option<TransactionEffects>>, Self::Error> {
+            (**self).multi_get_transaction_effects(tx_digests)
+        }
+    }
+
+    impl<T: TransactionStore + ?Sized> TransactionStore for Arc<T> {
+        fn get_transaction(
+            &self,
+            tx_digest: &TransactionDigest,
+        ) -> Result<Option<VerifiedTransaction>, Self::Error> {
+            (**self).get_transaction(tx_digest)
+        }
+
+        fn multi_get_transactions(
+            &self,
+            tx_digests: &[TransactionDigest],
+        ) -> Result<Vec<Option<VerifiedTransaction>>, Self::Error> {
+            (**self).multi_get_transactions(tx_digests)
+        }
+
+        fn get_transaction_effects(
+            &self,
+            tx_digest: &TransactionDigest,
+        ) -> Result<Option<TransactionEffects>, Self::Error> {
+            (**self).get_transaction_effects(tx_digest)
+        }
+
+        fn multi_get_transaction_effects(
+            &self,
+            tx_digests: &[TransactionDigest],
+        ) -> Result<Vec<Option<TransactionEffects>>, Self::Error> {
+            (**self).multi_get_transaction_effects(tx_digests)
+        }
+    }
+
+    pub trait ObjectStore2: Store {
+        fn get_object(&self, object_id: &ObjectID) -> Result<Option<Object>, Self::Error>;
+
+        fn get_object_by_key(
+            &self,
+            object_id: &ObjectID,
+            version: VersionNumber,
+        ) -> Result<Option<Object>, Self::Error>;
+
+        fn multi_get_objects(
+            &self,
+            object_ids: &[ObjectID],
+        ) -> Result<Vec<Option<Object>>, Self::Error> {
+            object_ids
+                .iter()
+                .map(|digest| self.get_object(digest))
+                .collect::<Result<Vec<_>, _>>()
+        }
+
+        fn multi_get_objects_by_key(
+            &self,
+            object_keys: &[ObjectKey],
+        ) -> Result<Vec<Option<Object>>, Self::Error> {
+            object_keys
+                .iter()
+                .map(|k| self.get_object_by_key(&k.0, k.1))
+                .collect::<Result<Vec<_>, _>>()
+        }
+    }
+
+    impl<T: ObjectStore2 + ?Sized> ObjectStore2 for &T {
+        fn get_object(&self, object_id: &ObjectID) -> Result<Option<Object>, Self::Error> {
+            (*self).get_object(object_id)
+        }
+
+        fn get_object_by_key(
+            &self,
+            object_id: &ObjectID,
+            version: VersionNumber,
+        ) -> Result<Option<Object>, Self::Error> {
+            (*self).get_object_by_key(object_id, version)
+        }
+
+        fn multi_get_objects(
+            &self,
+            object_ids: &[ObjectID],
+        ) -> Result<Vec<Option<Object>>, Self::Error> {
+            (*self).multi_get_objects(object_ids)
+        }
+
+        fn multi_get_objects_by_key(
+            &self,
+            object_keys: &[ObjectKey],
+        ) -> Result<Vec<Option<Object>>, Self::Error> {
+            (*self).multi_get_objects_by_key(object_keys)
+        }
+    }
+
+    impl<T: ObjectStore2 + ?Sized> ObjectStore2 for Box<T> {
+        fn get_object(&self, object_id: &ObjectID) -> Result<Option<Object>, Self::Error> {
+            (**self).get_object(object_id)
+        }
+
+        fn get_object_by_key(
+            &self,
+            object_id: &ObjectID,
+            version: VersionNumber,
+        ) -> Result<Option<Object>, Self::Error> {
+            (**self).get_object_by_key(object_id, version)
+        }
+
+        fn multi_get_objects(
+            &self,
+            object_ids: &[ObjectID],
+        ) -> Result<Vec<Option<Object>>, Self::Error> {
+            (**self).multi_get_objects(object_ids)
+        }
+
+        fn multi_get_objects_by_key(
+            &self,
+            object_keys: &[ObjectKey],
+        ) -> Result<Vec<Option<Object>>, Self::Error> {
+            (**self).multi_get_objects_by_key(object_keys)
+        }
+    }
+
+    impl<T: ObjectStore2 + ?Sized> ObjectStore2 for Arc<T> {
+        fn get_object(&self, object_id: &ObjectID) -> Result<Option<Object>, Self::Error> {
+            (**self).get_object(object_id)
+        }
+
+        fn get_object_by_key(
+            &self,
+            object_id: &ObjectID,
+            version: VersionNumber,
+        ) -> Result<Option<Object>, Self::Error> {
+            (**self).get_object_by_key(object_id, version)
+        }
+
+        fn multi_get_objects(
+            &self,
+            object_ids: &[ObjectID],
+        ) -> Result<Vec<Option<Object>>, Self::Error> {
+            (**self).multi_get_objects(object_ids)
+        }
+
+        fn multi_get_objects_by_key(
+            &self,
+            object_keys: &[ObjectKey],
+        ) -> Result<Vec<Option<Object>>, Self::Error> {
+            (**self).multi_get_objects_by_key(object_keys)
+        }
+    }
+
+    pub trait EventStore: Store {
+        fn get_events(
+            &self,
+            event_digest: &TransactionEventsDigest,
+        ) -> Result<Option<TransactionEvents>, Self::Error>;
+
+        fn multi_get_events(
+            &self,
+            event_digests: &[TransactionEventsDigest],
+        ) -> Result<Vec<Option<TransactionEvents>>, Self::Error> {
+            event_digests
+                .iter()
+                .map(|digest| self.get_events(digest))
+                .collect::<Result<Vec<_>, _>>()
+        }
+    }
+
+    impl<T: EventStore + ?Sized> EventStore for &T {
+        fn get_events(
+            &self,
+            event_digest: &TransactionEventsDigest,
+        ) -> Result<Option<TransactionEvents>, Self::Error> {
+            (*self).get_events(event_digest)
+        }
+
+        fn multi_get_events(
+            &self,
+            event_digests: &[TransactionEventsDigest],
+        ) -> Result<Vec<Option<TransactionEvents>>, Self::Error> {
+            (*self).multi_get_events(event_digests)
+        }
+    }
+
+    impl<T: EventStore + ?Sized> EventStore for Box<T> {
+        fn get_events(
+            &self,
+            event_digest: &TransactionEventsDigest,
+        ) -> Result<Option<TransactionEvents>, Self::Error> {
+            (**self).get_events(event_digest)
+        }
+
+        fn multi_get_events(
+            &self,
+            event_digests: &[TransactionEventsDigest],
+        ) -> Result<Vec<Option<TransactionEvents>>, Self::Error> {
+            (**self).multi_get_events(event_digests)
+        }
+    }
+
+    impl<T: EventStore + ?Sized> EventStore for Arc<T> {
+        fn get_events(
+            &self,
+            event_digest: &TransactionEventsDigest,
+        ) -> Result<Option<TransactionEvents>, Self::Error> {
+            (**self).get_events(event_digest)
+        }
+
+        fn multi_get_events(
+            &self,
+            event_digests: &[TransactionEventsDigest],
+        ) -> Result<Vec<Option<TransactionEvents>>, Self::Error> {
+            (**self).multi_get_events(event_digests)
+        }
+    }
+
+    pub trait CommitteeStore: Store {
+        fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>, Self::Error>;
+    }
+
+    impl<T: CommitteeStore + ?Sized> CommitteeStore for &T {
+        fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>, Self::Error> {
+            (*self).get_committee(epoch)
+        }
+    }
+
+    impl<T: CommitteeStore + ?Sized> CommitteeStore for Box<T> {
+        fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>, Self::Error> {
+            (**self).get_committee(epoch)
+        }
+    }
+
+    impl<T: CommitteeStore + ?Sized> CommitteeStore for Arc<T> {
+        fn get_committee(&self, epoch: EpochId) -> Result<Option<Arc<Committee>>, Self::Error> {
+            (**self).get_committee(epoch)
+        }
     }
 }

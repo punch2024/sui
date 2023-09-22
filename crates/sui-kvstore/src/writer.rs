@@ -127,7 +127,7 @@ pub async fn uploader<S>(
 ) -> Result<()>
 where
     S: ReadStore + Send,
-    <S as ReadStore>::Error: Send,
+    S::Error: Send,
 {
     let mut client = DynamoDbClient::new(&config).await;
     while receiver.try_recv().is_err() {
@@ -155,7 +155,7 @@ where
 
                     if let Some(event_digest) = content.effects.events_digest() {
                         if let Some(tx_events) = store
-                            .get_transaction_events(event_digest)
+                            .get_events(event_digest)
                             .map_err(|_| anyhow!("Failed to fetch events from the store"))?
                         {
                             events.push((event_digest.into_inner().to_vec(), tx_events));

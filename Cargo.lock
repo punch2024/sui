@@ -9288,6 +9288,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "simulacrum-node"
+version = "0.1.0"
+dependencies = [
+ "simulacrum",
+ "sui-types",
+ "tap",
+]
+
+[[package]]
 name = "siphasher"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10908,7 +10917,6 @@ dependencies = [
  "bcs",
  "reqwest",
  "serde",
- "sui-core",
  "sui-types",
  "tokio",
  "workspace-hack",
