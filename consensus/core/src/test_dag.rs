@@ -5,11 +5,13 @@ use std::sync::Arc;
 
 use consensus_config::AuthorityIndex;
 use parking_lot::RwLock;
+use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use crate::{
     block::{genesis_blocks, BlockRef, BlockTimestampMs, Round, TestBlock, VerifiedBlock},
     context::Context,
     dag_state::DagState,
+    test_dag_builder::DagBuilder,
 };
 
 // todo: remove this once tests have been refactored to use DagBuilder/DagParser
@@ -87,4 +89,18 @@ pub(crate) fn build_dag_layer(
         dag_state.write().accept_block(block);
     }
     references
+}
+
+pub(crate) fn create_random_dag(seed: u64, num_rounds: Round, context: Arc<Context>) -> DagBuilder {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut dag_builder = DagBuilder::new(context);
+
+    for r in 1..=num_rounds {
+        let inner_seed = rng.gen_range(0..100);
+        dag_builder
+            .layer(r)
+            .min_ancestor_links(true, Some(inner_seed));
+    }
+
+    dag_builder
 }
