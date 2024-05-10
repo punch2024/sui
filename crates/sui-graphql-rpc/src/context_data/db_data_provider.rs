@@ -10,6 +10,7 @@ use diesel::PgConnection;
 use std::{collections::BTreeMap, time::Duration};
 use sui_indexer::db::ConnectionPoolConfig;
 use sui_indexer::{apis::GovernanceReadApi, indexer_reader::IndexerReader};
+use sui_json_rpc::governance_api::{calculate_apys, ValidatorExchangeRates};
 use sui_json_rpc_types::Stake as RpcStakedSui;
 use sui_types::{
     base_types::SuiAddress as NativeSuiAddress,
@@ -18,6 +19,8 @@ use sui_types::{
         SuiSystemStateSummary as NativeSuiSystemStateSummary, SuiValidatorSummary,
     },
 };
+
+use sui_indexer::apis::governance_api::exchange_rates;
 
 pub(crate) struct PgManager {
     pub inner: IndexerReader<PgConnection>,
@@ -55,14 +58,44 @@ impl PgManager {
     /// Retrieve the validator APYs
     pub(crate) async fn fetch_validator_apys(
         &self,
+        latest_sui_system_state: &NativeSuiSystemStateSummary,
+        epoch_id: Option<u64>,
         address: &NativeSuiAddress,
     ) -> Result<Option<f64>, Error> {
-        let governance_api = GovernanceReadApi::new(self.inner.clone());
+        let stake_subsidy_start_epoch = latest_sui_system_state.stake_subsidy_start_epoch;
+        let exchange_rates = self.fetch_exchange_rates(latest_sui_system_state).await?;
+        let validator_exchange_rates = exchange_rates.iter().find(|x| x.address == *address);
+        if let Some(validator_exchange_rates) = validator_exchange_rates {
+            // find the rates up to that epoch, if the epoch is specified
+            let mut rates_to_use = validator_exchange_rates.rates.clone();
+            if let Some(epoch) = epoch_id {
+                rates_to_use.retain(|x| x.0 <= epoch);
+            }
+            // build the ValidatorExchangeRates type needed to pass to calculate_apys function
+            let validator_exchange_rates_to_use = ValidatorExchangeRates {
+                address: *address,
+                pool_id: validator_exchange_rates.pool_id,
+                active: true,
+                rates: rates_to_use,
+            };
+            let apys = calculate_apys(
+                stake_subsidy_start_epoch,
+                vec![validator_exchange_rates_to_use],
+            );
+            Ok(apys.iter().find(|x| x.address == *address).map(|x| x.apy))
+        } else {
+            Ok(None)
+        }
+    }
 
-        governance_api
-            .get_validator_apy(address)
+    pub(crate) async fn fetch_exchange_rates(
+        &self,
+        system_state: &NativeSuiSystemStateSummary,
+    ) -> Result<Vec<ValidatorExchangeRates>, Error> {
+        let governance_api = GovernanceReadApi::new(self.inner.clone());
+        exchange_rates(&governance_api, system_state)
             .await
-            .map_err(|e| Error::Internal(format!("{e}")))
+            .map_err(|e| Error::Internal(format!("Error fetching exchange rates. {e}")))
     }
 
     /// If no epoch was requested or if the epoch requested is in progress,
@@ -76,13 +109,15 @@ impl PgManager {
             .spawn_blocking(move |this| this.get_latest_sui_system_state())
             .await?;
 
-        if epoch_id.is_some_and(|id| id == latest_sui_system_state.epoch) {
-            Ok(latest_sui_system_state)
-        } else {
-            Ok(self
+        match epoch_id {
+            Some(epoch_id) if epoch_id == latest_sui_system_state.epoch => {
+                Ok(latest_sui_system_state)
+            }
+            Some(epoch_id) => Ok(self
                 .inner
-                .spawn_blocking(move |this| this.get_epoch_sui_system_state(epoch_id))
-                .await?)
+                .spawn_blocking(move |this| this.get_epoch_sui_system_state(Some(epoch_id)))
+                .await?),
+            None => Ok(latest_sui_system_state),
         }
     }
 
@@ -120,14 +155,17 @@ impl PgManager {
 /// when viewing the `Validator`'s state, it will be as if it was read at the same checkpoint.
 pub(crate) fn convert_to_validators(
     validators: Vec<SuiValidatorSummary>,
-    system_state: Option<NativeSuiSystemStateSummary>,
+    // we need this for exchange rates call to governance api in indexer
+    latest_sui_system_state: NativeSuiSystemStateSummary,
+    system_state_at_requested_epoch: Option<NativeSuiSystemStateSummary>,
     checkpoint_viewed_at: u64,
+    requested_for_epoch: Option<u64>,
 ) -> Vec<Validator> {
     let (at_risk, reports) = if let Some(NativeSuiSystemStateSummary {
         at_risk_validators,
         validator_report_records,
         ..
-    }) = system_state
+    }) = system_state_at_requested_epoch
     {
         (
             BTreeMap::from_iter(at_risk_validators),
@@ -139,7 +177,7 @@ pub(crate) fn convert_to_validators(
 
     validators
         .into_iter()
-        .map(|validator_summary| {
+        .map(move |validator_summary| {
             let at_risk = at_risk.get(&validator_summary.sui_address).copied();
             let report_records = reports.get(&validator_summary.sui_address).map(|addrs| {
                 addrs
@@ -157,6 +195,8 @@ pub(crate) fn convert_to_validators(
                 at_risk,
                 report_records,
                 checkpoint_viewed_at,
+                requested_for_epoch,
+                latest_sui_system_state: latest_sui_system_state.clone(),
             }
         })
         .collect()
