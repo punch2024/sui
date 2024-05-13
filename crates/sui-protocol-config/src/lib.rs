@@ -431,6 +431,9 @@ struct FeatureFlags {
     // Controls leader scoring & schedule change in Mysticeti consensus.
     #[serde(skip_serializing_if = "is_false")]
     mysticeti_leader_scoring_and_schedule: bool,
+
+    #[serde(skip_serializing_if = "is_false")]
+    record_consensus_determined_version_assignments_in_prologue: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -1271,6 +1274,11 @@ impl ProtocolConfig {
 
     pub fn include_consensus_digest_in_prologue(&self) -> bool {
         self.feature_flags.include_consensus_digest_in_prologue
+    }
+
+    pub fn record_consensus_determined_version_assignments_in_prologue(&self) -> bool {
+        self.feature_flags
+            .record_consensus_determined_version_assignments_in_prologue
     }
 
     pub fn hardened_otw_check(&self) -> bool {
@@ -2183,6 +2191,12 @@ impl ProtocolConfig {
                     // enable bridge in devnet
                     if chain != Chain::Mainnet && chain != Chain::Testnet {
                         cfg.feature_flags.bridge = true;
+                    }
+
+                    // Only enable consensus commit prologue V3 in devnet.
+                    if chain != Chain::Testnet && chain != Chain::Mainnet {
+                        cfg.feature_flags
+                            .record_consensus_determined_version_assignments_in_prologue = true;
                     }
                 }
                 46 => {
