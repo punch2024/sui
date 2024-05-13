@@ -2410,7 +2410,8 @@ impl VersionedProtocolMessage for SenderSignedData {
                 }
                 GenericSignature::Signature(_)
                 | GenericSignature::MultiSigLegacy(_)
-                | GenericSignature::ZkLoginAuthenticator(_) => (),
+                | GenericSignature::ZkLoginAuthenticator(_)
+                | GenericSignature::PasskeyAuthenticator(_) => (),
             }
         }
         Ok(())
