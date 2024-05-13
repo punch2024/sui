@@ -129,6 +129,7 @@ const MAX_PROTOCOL_VERSION: u64 = 46;
 //             Enable Leader Scoring & Schedule Change for Mysticeti consensus.
 // Version 46: Enable native bridge in testnet
 //             Enable resharing at the same initial shared version.
+//             Enable VDF in devnet
 
 #[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(u64);
@@ -1020,6 +1021,9 @@ pub struct ProtocolConfig {
     check_zklogin_id_cost_base: Option<u64>,
     // zklogin::check_zklogin_issuer
     check_zklogin_issuer_cost_base: Option<u64>,
+
+    vdf_verify_vdf_cost: Option<u64>,
+    vdf_hash_to_input_cost: Option<u64>,
 
     // Const params for consensus scoring decision
     // The scaling factor property for the MED outlier detection
