@@ -674,10 +674,7 @@ mod tests {
             subdag.blocks.len(),
             (num_authorities * wave_length) as usize + 1
         );
-        assert_eq!(
-            subdag.commit_ref,
-            commit.reference()
-        );
+        assert_eq!(subdag.commit_ref, commit.reference());
         assert_eq!(subdag.reputation_scores_desc, vec![]);
     }
 
