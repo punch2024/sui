@@ -114,6 +114,14 @@ impl LeaderSchedule {
             .unwrap() as usize
     }
 
+    /// Checks whether the dag state unscored sub dags list is empty. If yes then that means that
+    /// either (1) the system has just started and there is no unscored sub dag available (2) the
+    /// schedule has updated - new scores have been calculated. Both cases we consider as valid cases
+    /// where the schedule has been updated.
+    pub(crate) fn leader_schedule_updated(&self, dag_state: Arc<RwLock<DagState>>) -> bool {
+        dag_state.read().unscored_committed_subdags_count() == 0
+    }
+
     pub(crate) fn update_leader_schedule(&self, dag_state: Arc<RwLock<DagState>>) {
         let _s = self
             .context
@@ -841,6 +849,7 @@ mod tests {
             vec![],
             context.clock.timestamp_utc_ms(),
             CommitRef::new(1, CommitDigest::MIN),
+            vec![],
         )];
         dag_state
             .write()
@@ -938,6 +947,7 @@ mod tests {
             blocks,
             context.clock.timestamp_utc_ms(),
             last_commit.reference(),
+            vec![],
         )];
 
         let mut dag_state_write = dag_state.write();
