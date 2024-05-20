@@ -15,7 +15,6 @@ use move_ir_types::location::Loc;
 use move_symbol_pool::Symbol;
 pub mod coin_field;
 pub mod collection_equality;
-mod custom_rules;
 pub mod custom_state_change;
 pub mod freeze_wrapped;
 pub mod public_random;
@@ -135,10 +134,6 @@ pub fn known_filters() -> (Option<Symbol>, Vec<WarningFilter>) {
             Some(PUBLIC_RANDOM_FILTER_NAME),
         ),
     ];
-    if INCLUDE_NEW_RULES {
-        let mut custom_filters_list = custom_filters();
-        filters.append(&mut custom_filters_list);
-    }
     (Some(ALLOW_ATTR_CATEGORY.into()), filters)
 }
 

@@ -1,6 +1,10 @@
+// Copyright (c) The Move Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Implements lint rule for Move code to detect redundant reference dereference patterns.
 // It identifies and reports unnecessary temporary borrow followed by a dereference and a local borrow.
 // Aims to improve code efficiency by suggesting direct usage of expressions without redundant operations.
+use super::{LinterDiagnosticCategory, LINT_WARNING_PREFIX, REDUNDANT_REF_DEREF_DIAG_CODE};
 use crate::{
     diag,
     diagnostics::{
@@ -8,7 +12,6 @@ use crate::{
         WarningFilters,
     },
     shared::{program_info::TypingProgramInfo, CompilationEnv},
-    sui_mode::linters::{LinterDiagCategory, LINTER_DEFAULT_DIAG_CODE, LINT_WARNING_PREFIX},
     typing::{
         ast::{self as T, UnannotatedExp_},
         visitor::{TypingVisitorConstructor, TypingVisitorContext},
@@ -19,8 +22,8 @@ use move_ir_types::location::Loc;
 const REDUNDANT_REF_DEREF_DIAG: DiagnosticInfo = custom(
     LINT_WARNING_PREFIX,
     Severity::Warning,
-    LinterDiagCategory::RedundantRefDeref as u8,
-    LINTER_DEFAULT_DIAG_CODE,
+    LinterDiagnosticCategory::Complexity as u8,
+    REDUNDANT_REF_DEREF_DIAG_CODE,
     "",
 );
 

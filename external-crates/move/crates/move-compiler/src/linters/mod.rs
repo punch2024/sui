@@ -4,10 +4,15 @@
 use move_symbol_pool::Symbol;
 
 use crate::{
-    command_line::compiler::Visitor, diagnostics::codes::WarningFilter,
-    linters::constant_naming::ConstantNamingVisitor, typing::visitor::TypingVisitor,
+    command_line::compiler::Visitor,
+    diagnostics::codes::WarningFilter,
+    linters::{
+        constant_naming::ConstantNamingVisitor, redundant_ref_deref::RedundantRefDerefVisitor,
+    },
+    typing::visitor::TypingVisitor,
 };
 pub mod constant_naming;
+pub mod redundant_ref_deref;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LintLevel {
     // No linters
@@ -18,25 +23,42 @@ pub enum LintLevel {
     All,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum LinterDiagnosticCategory {
+    Correctness,
+    Complexity,
+    Suspicious,
+    Deprecated,
+    Style,
+    Sui = 99,
+}
+
 pub const ALLOW_ATTR_CATEGORY: &str = "lint";
 pub const LINT_WARNING_PREFIX: &str = "Lint ";
 pub const CONSTANT_NAMING_FILTER_NAME: &str = "constant_naming";
-
 pub const CONSTANT_NAMING_DIAG_CODE: u8 = 1;
 
-pub enum LinterDiagCategory {
-    Style,
-}
+pub const REDUNDANT_REF_DEREF_FILTER_NAME: &str = "redundant_ref_deref";
+pub const REDUNDANT_REF_DEREF_DIAG_CODE: u8 = 2;
 
 pub fn known_filters() -> (Option<Symbol>, Vec<WarningFilter>) {
     (
         Some(ALLOW_ATTR_CATEGORY.into()),
-        vec![WarningFilter::code(
-            Some(LINT_WARNING_PREFIX),
-            LinterDiagCategory::Style as u8,
-            CONSTANT_NAMING_DIAG_CODE,
-            Some(CONSTANT_NAMING_FILTER_NAME),
-        )],
+        vec![
+            WarningFilter::code(
+                Some(LINT_WARNING_PREFIX),
+                LinterDiagnosticCategory::Style as u8,
+                CONSTANT_NAMING_DIAG_CODE,
+                Some(CONSTANT_NAMING_FILTER_NAME),
+            ),
+            WarningFilter::code(
+                Some(LINT_WARNING_PREFIX),
+                LinterDiagnosticCategory::Correctness as u8,
+                REDUNDANT_REF_DEREF_DIAG_CODE,
+                Some(REDUNDANT_REF_DEREF_FILTER_NAME),
+            ),
+        ],
     )
 }
 
@@ -45,9 +67,10 @@ pub fn linter_visitors(level: LintLevel) -> Vec<Visitor> {
         LintLevel::None => vec![],
         LintLevel::Default => vec![],
         LintLevel::All => {
-            vec![constant_naming::ConstantNamingVisitor::visitor(
-                ConstantNamingVisitor,
-            )]
+            vec![
+                constant_naming::ConstantNamingVisitor::visitor(ConstantNamingVisitor),
+                redundant_ref_deref::RedundantRefDerefVisitor::visitor(RedundantRefDerefVisitor),
+            ]
         }
     }
 }
