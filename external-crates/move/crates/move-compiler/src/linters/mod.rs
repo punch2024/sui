@@ -6,11 +6,13 @@ use move_symbol_pool::Symbol;
 use crate::{
     command_line::compiler::Visitor, diagnostics::codes::WarningFilter,
     linters::bool_comparison::BoolComparison, linters::constant_naming::ConstantNamingVisitor,
-    typing::visitor::TypingVisitor,
+    linters::redundant_boolean_expressions::RedundantBooleanExp, typing::visitor::TypingVisitor,
 };
 pub mod bool_comparison;
 
 pub mod constant_naming;
+
+pub mod redundant_boolean_expressions;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LintLevel {
     // No linters

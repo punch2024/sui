@@ -73,8 +73,6 @@ pub const RANDOM_MOD_NAME: &str = "random";
 pub const RANDOM_STRUCT_NAME: &str = "Random";
 pub const RANDOM_GENERATOR_STRUCT_NAME: &str = "RandomGenerator";
 
-pub const CONSTANT_NAMING_FILTER_NAME: &str = "constant_naming";
-
 pub const INVALID_LOC: Loc = Loc::invalid();
 
 pub enum LinterDiagCategory {
@@ -85,7 +83,6 @@ pub enum LinterDiagCategory {
     FreezeWrapped,
     CollectionEquality,
     PublicRandom,
-    ConstantNaming,
 }
 
 /// A default code for each linter category (as long as only one code per category is used, no other
