@@ -3,23 +3,20 @@
 use crate::{
     diag,
     diagnostics::codes::{custom, DiagnosticInfo, Severity},
-    naming::ast::{StructDefinition, StructFields},
+    naming::ast::{StructDefinition, StructFields, TypeName_, Type_},
     parser::ast::Ability_,
     shared::{program_info::TypingProgramInfo, CompilationEnv},
-    typing::{
-        ast::{self as T},
-        visitor::TypingVisitor,
-    },
+    typing::{ast as T, visitor::TypingVisitor},
 };
-use move_ir_types::location::{Loc, Spanned};
+use move_ir_types::location::Loc;
 
-use super::{LinterDiagCategory, LINTER_DEFAULT_DIAG_CODE, LINT_WARNING_PREFIX};
+use super::{LinterDiagnosticCategory, LINT_WARNING_PREFIX, MISSING_KEY_DIAG_CODE};
 
 const MISSING_KEY_ABILITY_DIAG: DiagnosticInfo = custom(
     LINT_WARNING_PREFIX,
     Severity::Warning,
-    LinterDiagCategory::MissingKey as u8,
-    LINTER_DEFAULT_DIAG_CODE,
+    LinterDiagnosticCategory::Sui as u8,
+    MISSING_KEY_DIAG_CODE,
     "Struct has an 'id' field of type 'UID' but is missing the 'key' ability.",
 );
 
@@ -47,35 +44,26 @@ impl TypingVisitor for MissingKey {
 fn check_key_abilities(env: &mut CompilationEnv, sdef: &StructDefinition, sloc: Loc) {
     let has_id_field_of_type_uid = match &sdef.fields {
         StructFields::Defined(fields) => {
-            fields.iter().any(
-                |(_, symbol, ftype)| {
-                    if symbol.as_str() == "id" {
-                        true
-                    } else {
-                        false
-                    }
-                },
-            )
+            if let Some((_, symbol, ftype)) = fields.iter().nth(0) {
+                matches!(ftype.1.value, Type_::Apply(_, sp!(_, TypeName_::ModuleType(_, struct_name)), _) if struct_name.0.value ==  symbol!("UID"))
+                    && *symbol == symbol!("id")
+            } else {
+                false
+            }
         }
         StructFields::Native(_) => false,
     };
 
-    let lacks_key_ability = !sdef
-        .abilities
-        .has_ability(&Spanned::new(sloc, Ability_::Key));
+    let lacks_key_ability = !sdef.abilities.has_ability_(Ability_::Key);
 
     if has_id_field_of_type_uid && lacks_key_ability {
-        report_missing_key_ability(env, sloc);
+        let diag = diag!(
+            MISSING_KEY_ABILITY_DIAG,
+            (
+                sloc,
+                "Struct has an 'id' field of type 'UID' but is missing the 'key' ability."
+            )
+        );
+        env.add_diag(diag);
     }
-}
-
-fn report_missing_key_ability(env: &mut CompilationEnv, loc: Loc) {
-    let diag = diag!(
-        MISSING_KEY_ABILITY_DIAG,
-        (
-            loc,
-            "Struct has an 'id' field of type 'UID' but is missing the 'key' ability."
-        )
-    );
-    env.add_diag(diag);
 }
