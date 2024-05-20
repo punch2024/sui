@@ -51,74 +51,55 @@ impl TypingVisitorConstructor for BoolComparison {
 
 impl TypingVisitorContext for Context<'_> {
     fn visit_exp_custom(&mut self, exp: &mut T::Exp) -> bool {
-        let UnannotatedExp_::BinopExp(e1, op, _, e2) = &exp.exp.value else {
-            return false;
+        if let UnannotatedExp_::BinopExp(e1, op, _, e2) = &exp.exp.value {
+            if let Some(message) = match (&op.value, &e1.exp.value, &e2.exp.value) {
+                (
+                    BinOp_::Or | BinOp_::And,
+                    UnannotatedExp_::Value(sp!(_, Value_::Bool(bool))),
+                    _,
+                )
+                | (
+                    BinOp_::Or | BinOp_::And,
+                    _,
+                    UnannotatedExp_::Value(sp!(_, Value_::Bool(bool))),
+                ) => {
+                    let always_value = match op.value {
+                        BinOp_::Or => *bool,
+                        BinOp_::And => !*bool,
+                        _ => unreachable!(),
+                    };
+                    Some(format!(
+                        "This expression always evaluates to {} regardless of the other operand.",
+                        always_value
+                    ))
+                }
+                (
+                    BinOp_::Eq | BinOp_::Neq,
+                    UnannotatedExp_::Value(sp!(_, Value_::Bool(bool))),
+                    _,
+                )
+                | (
+                    BinOp_::Eq | BinOp_::Neq,
+                    _,
+                    UnannotatedExp_::Value(sp!(_, Value_::Bool(bool))),
+                ) if matches!(bool, true | false) => {
+                    let simplification = match (op.value, bool) {
+                        (BinOp_::Eq,true) | (BinOp_::Neq, false) => {
+                            "Consider simplifying this expression to the variable or function itself."
+                        }
+                        (BinOp_::Eq, false) | (BinOp_::Neq, true) => {
+                            "Consider simplifying this expression using logical negation '!'."
+                        }
+                        _ => unreachable!(),
+                    };
+                    Some(simplification.to_owned())
+                }
+                _ => None,
+            } {
+                add_bool_comparison_diag(self.env, exp.exp.loc, &message);
+                return true;
+            }
         };
-        // Check if the operation is a logical OR
-        match &op.value {
-            BinOp_::Or => {
-                // Check if one of the operands is a boolean literal
-                if let (UnannotatedExp_::Value(bool), UnannotatedExp_::Copy { var, .. })
-                | (UnannotatedExp_::Copy { var, .. }, UnannotatedExp_::Value(bool)) =
-                    (&e1.exp.value, &e2.exp.value)
-                {
-                    // Check if the boolean literal is true
-                    if &Value_::Bool(true) == &bool.value {
-                        add_bool_comparison_diag(self.env, exp.exp.loc, "This expression always evaluates to true regardless of the other operand.");
-                        return true;
-                    } else {
-                        let Var_ { name, .. } = var.value;
-                        add_bool_comparison_diag(self.env, exp.exp.loc, format!(
-                                    "This expression always evaluates to {} regardless of the other operand.",
-                                    name.as_str()
-                                ).as_str());
-                    }
-                }
-            }
-            BinOp_::And => {
-                // Check if one of the operands is a boolean literal
-                if let (UnannotatedExp_::Value(bool), UnannotatedExp_::Copy { var, .. })
-                | (UnannotatedExp_::Copy { var, .. }, UnannotatedExp_::Value(bool)) =
-                    (&e1.exp.value, &e2.exp.value)
-                {
-                    // Check if the boolean literal is false
-                    if &Value_::Bool(false) == &bool.value {
-                        add_bool_comparison_diag(self.env, exp.exp.loc, "This expression always evaluates to false regardless of the other operand.");
-                        return true;
-                    } else {
-                        let Var_ { name, .. } = var.value;
-                        add_bool_comparison_diag(self.env, exp.exp.loc, format!(
-                                    "This expression always evaluates to {} regardless of the other operand.",
-                                    name.as_str()
-                                ).as_str());
-                    }
-                }
-            }
-            BinOp_::Eq | BinOp_::Neq => {
-                // Check if one side is a boolean literal and the other is a boolean expression
-                let ((UnannotatedExp_::Value(sp!(_, Value_::Bool(b))), _)
-                | (_, UnannotatedExp_::Value(sp!(_, Value_::Bool(b))))) =
-                    (&e1.exp.value, &e2.exp.value)
-                else {
-                    return false;
-                };
-
-                let simplification = match (op.value, b) {
-                    (BinOp_::Eq, true) | (BinOp_::Neq, false) => {
-                        "Consider simplifying this expression to the variable or function itself."
-                    }
-                    (BinOp_::Eq, false) | (BinOp_::Neq, true) => {
-                        "Consider simplifying this expression using logical negation '!'."
-                    }
-                    _ => return false, // This case should not occur
-                };
-
-                if !simplification.is_empty() {
-                    add_bool_comparison_diag(self.env, exp.exp.loc, simplification);
-                }
-            }
-            _ => {}
-        }
 
         false
     }
