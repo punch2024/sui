@@ -21,13 +21,13 @@ use crate::{
 };
 use move_ir_types::location::Loc;
 
-use super::{LinterDiagCategory, LINTER_WARNING_REDUNDANT_BOOL_CODE, LINT_WARNING_PREFIX};
+use super::{LinterDiagnosticCategory, BOOL_COMPARISON_DIAG_CODE, LINT_WARNING_PREFIX};
 
 const BOOL_COMPARISON_DIAG: DiagnosticInfo = custom(
     LINT_WARNING_PREFIX,
     Severity::Warning,
-    LinterDiagCategory::Redundancy as u8,
-    LINTER_WARNING_REDUNDANT_BOOL_CODE,
+    LinterDiagnosticCategory::Complexity as u8,
+    BOOL_COMPARISON_DIAG_CODE,
     "unnecessary boolean comparison to true or false",
 );
 

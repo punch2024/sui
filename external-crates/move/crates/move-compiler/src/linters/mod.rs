@@ -6,7 +6,7 @@ use move_symbol_pool::Symbol;
 use crate::{
     command_line::compiler::Visitor, diagnostics::codes::WarningFilter,
     linters::bool_comparison::BoolComparison, linters::constant_naming::ConstantNamingVisitor,
-    typing::visitor::TypingVisitor, typing::visitor::TypingVisitor,
+    typing::visitor::TypingVisitor,
 };
 pub mod bool_comparison;
 
@@ -21,6 +21,17 @@ pub enum LintLevel {
     All,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum LinterDiagnosticCategory {
+    Correctness,
+    Complexity,
+    Suspicious,
+    Deprecated,
+    Style,
+    Sui = 99,
+}
+
 pub const ALLOW_ATTR_CATEGORY: &str = "lint";
 pub const LINT_WARNING_PREFIX: &str = "Lint ";
 
@@ -28,11 +39,7 @@ pub const CONSTANT_NAMING_FILTER_NAME: &str = "constant_naming";
 pub const CONSTANT_NAMING_DIAG_CODE: u8 = 1;
 
 pub const BOOL_COMPARISON_FILTER_NAME: &str = "bool_comparison";
-pub const LINTER_WARNING_REDUNDANT_BOOL_CODE: u8 = 2;
-pub enum LinterDiagCategory {
-    Redundancy,
-    Style,
-}
+pub const BOOL_COMPARISON_DIAG_CODE: u8 = 2;
 
 pub fn known_filters() -> (Option<Symbol>, Vec<WarningFilter>) {
     (
@@ -40,13 +47,13 @@ pub fn known_filters() -> (Option<Symbol>, Vec<WarningFilter>) {
         vec![
             WarningFilter::code(
                 Some(LINT_WARNING_PREFIX),
-                LinterDiagCategory::Redundancy as u8,
-                LINTER_WARNING_REDUNDANT_BOOL_CODE,
+                LinterDiagnosticCategory::Complexity as u8,
+                BOOL_COMPARISON_DIAG_CODE,
                 Some(BOOL_COMPARISON_FILTER_NAME),
             ),
             WarningFilter::code(
                 Some(LINT_WARNING_PREFIX),
-                LinterDiagCategory::Style as u8,
+                LinterDiagnosticCategory::Complexity as u8,
                 CONSTANT_NAMING_DIAG_CODE,
                 Some(CONSTANT_NAMING_FILTER_NAME),
             ),
