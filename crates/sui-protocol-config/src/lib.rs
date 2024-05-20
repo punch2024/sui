@@ -431,6 +431,12 @@ struct FeatureFlags {
     // Controls leader scoring & schedule change in Mysticeti consensus.
     #[serde(skip_serializing_if = "is_false")]
     mysticeti_leader_scoring_and_schedule: bool,
+
+    // Enables the use of the Mysticeti committed sub dag digest to the `ConsensusCommitInfo` in checkpoints.
+    // When disabled the default digest is used instead. It's important to have this guarded behind
+    // a flag as it will lead to checkpoint forks.
+    #[serde(skip_serializing_if = "is_false")]
+    mysticeti_use_committed_subdag_digest: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -1311,6 +1317,10 @@ impl ProtocolConfig {
 
     pub fn mysticeti_leader_scoring_and_schedule(&self) -> bool {
         self.feature_flags.mysticeti_leader_scoring_and_schedule
+    }
+
+    pub fn mysticeti_use_committed_subdag_digest(&self) -> bool {
+        self.feature_flags.mysticeti_use_committed_subdag_digest
     }
 }
 
