@@ -1,0 +1,6 @@
+warning[Lint W04001]: constant should follow naming convention
+  ┌─ tests/linter/suppressed_lints.move:4:5
+  │
+4 │     const Another_BadName: u64 = 42; // Should trigger a warning
+  │     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 'Another_BadName' should be ALL_CAPS. Or for error constants, use PascalCase
+
