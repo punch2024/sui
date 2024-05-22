@@ -25,11 +25,11 @@ use crate::{
         program_info::{ConstantInfo, DatatypeKind, TypingProgramInfo},
         string_utils::{debug_print, make_ascii_titlecase},
         unique_map::UniqueMap,
-        *,
+        *, ide::{MacroCallInfo, ExpInfo},
     },
     sui_mode,
     typing::{
-        ast::{self as T, IDEInfo, MacroCallInfo},
+        ast::{self as T},
         core::{
             self, public_testing_visibility, Context, PublicForTesting, ResolvedFunctionType, Subst,
         },
@@ -238,6 +238,11 @@ fn module(
     (typed_module, new_friends)
 }
 
+fn finalize_ide_info(context: &mut Context) {
+    expand::ide_info(context);
+    context.env.append_ide_info(&mut context.ide_info);
+}
+
 //**************************************************************************************************
 // Functions
 //**************************************************************************************************
@@ -271,6 +276,7 @@ fn function(context: &mut Context, name: FunctionName, f: N::Function) -> T::Fun
     } else {
         function_body(context, n_body)
     };
+    if context.env.ide_mode() { finalize_ide_info(context); }
     context.current_function = None;
     context.in_macro_function = false;
     context.env.pop_warning_filter_scope();
@@ -385,6 +391,7 @@ fn constant(context: &mut Context, _name: ConstantName, nconstant: N::Constant) 
     expand::exp(context, &mut value);
 
     check_valid_constant::exp(context, &value);
+    if context.env.ide_mode() { finalize_ide_info(context); }
     context.env.pop_warning_filter_scope();
 
     T::Constant {
@@ -488,10 +495,6 @@ mod check_valid_constant {
             E::Unit { .. } | E::Value(_) | E::Move { .. } | E::Copy { .. } => return,
             E::Block(seq) => {
                 sequence(context, seq);
-                return;
-            }
-            E::IDEAnnotation(_, er) => {
-                exp(context, er);
                 return;
             }
             E::UnaryExp(_, er) => {
@@ -1632,13 +1635,6 @@ fn exp(context: &mut Context, ne: Box<N::Exp>) -> Box<T::Exp> {
             };
             context.maybe_exit_macro_argument(eloc, from_macro_argument);
             res
-        }
-        NE::IDEAnnotation(info, e) => {
-            let new_info = match info {
-                N::IDEInfo::ExpandedLambda => IDEInfo::ExpandedLambda,
-            };
-            let new_exp = exp(context, e);
-            (new_exp.ty.clone(), TE::IDEAnnotation(new_info, new_exp))
         }
         NE::Lambda(_) => {
             if context
@@ -3769,12 +3765,12 @@ fn method_call(
                 edotted.for_autocomplete = true;
                 let err_ty = context.error_type(loc);
                 let dot_output =
-                    resolve_exp_dotted(context, DottedUsage::Borrow(false), loc, edotted);
+                    resolve_exp_dotted(context, DottedUsage::Borrow(false), edotted.loc, edotted);
                 return Some((err_ty, dot_output.exp.value));
             }
             ResolvedMethodCall::InvalidBaseType | ResolvedMethodCall::UnknownName => return None,
         };
-    let first_arg = *resolve_exp_dotted(context, usage, loc, edotted);
+    let first_arg = *resolve_exp_dotted(context, usage, edotted.loc, edotted);
     args.insert(0, first_arg);
     let (mut call, ret_ty) = module_call_impl(context, loc, m, f, fty, argloc, args);
     call.method_name = Some(method);
@@ -4247,12 +4243,14 @@ fn macro_method_call(
                 edotted.for_autocomplete = true;
                 let err_ty = context.error_type(loc);
                 let dot_output =
-                    resolve_exp_dotted(context, DottedUsage::Borrow(false), loc, edotted);
+                    resolve_exp_dotted(context, DottedUsage::Borrow(false), edotted.loc, edotted);
                 return Some((err_ty, dot_output.exp.value));
             }
             ResolvedMethodCall::InvalidBaseType | ResolvedMethodCall::UnknownName => return None,
         };
-    let first_arg = *resolve_exp_dotted(context, usage, loc, edotted);
+    let first_arg = *resolve_exp_dotted(context, usage, edotted.loc, edotted);
+    println!("first arg loc: {:#?}", first_arg.exp.loc);
+    println!("call arg : {:#?}", loc);
     let mut args = vec![macro_expand::EvalStrategy::ByValue(first_arg)];
     args.extend(
         nargs
@@ -4470,24 +4468,18 @@ fn expand_macro(
             seq.push_back(sp(body.exp.loc, TS::Seq(body)));
             let use_funs = N::UseFuns::new(context.current_call_color());
             let block = TE::Block((use_funs, seq));
-            let e_ = if context.env.ide_mode() {
-                TE::IDEAnnotation(
-                    T::IDEInfo::MacroCallInfo(MacroCallInfo {
-                        module: m,
-                        name: f,
-                        method_name,
-                        type_arguments: type_args.clone(),
-                        by_value_args,
-                    }),
-                    Box::new(T::Exp {
-                        ty: ty.clone(),
-                        exp: sp(call_loc, block),
-                    }),
-                )
-            } else {
-                block
-            };
-            (ty, e_)
+            if context.env.ide_mode() {
+                let macro_call_info = MacroCallInfo {
+                     module: m,
+                     name: f,
+                     method_name,
+                     type_arguments: type_args.clone(),
+                     by_value_args,
+                 };
+                let info = ExpInfo::MacroCallInfo(Box::new(macro_call_info));
+                context.add_ide_exp_info(call_loc, info);
+            }
+            (ty, block)
         }
     };
     if context.pop_macro_expansion(call_loc, &m, &f) {

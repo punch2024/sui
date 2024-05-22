@@ -10,9 +10,9 @@ use crate::{
     naming::ast::{BuiltinTypeName_, FunctionSignature, Type, TypeName_, Type_},
     parser::ast::Ability_,
     typing::{
-        ast::{self as T, IDEInfo},
+        ast::{self as T},
         core::{self, Context},
-    },
+    }, shared::ide::{self, IDEInfo},
 };
 use move_core_types::u256::U256;
 use move_ir_types::location::*;
@@ -258,17 +258,6 @@ pub fn exp(context: &mut Context, e: &mut T::Exp) {
         E::Loop { body: eloop, .. } => exp(context, eloop),
         E::NamedBlock(_, seq) => sequence(context, seq),
         E::Block(seq) => sequence(context, seq),
-        E::IDEAnnotation(info, er) => {
-            exp(context, er);
-            match info {
-                IDEInfo::MacroCallInfo(i) => {
-                    for t in i.type_arguments.iter_mut() {
-                        type_(context, t);
-                    }
-                }
-                IDEInfo::ExpandedLambda => (),
-            }
-        }
         E::Assign(assigns, tys, er) => {
             lvalues(context, assigns);
             expected_types(context, tys);
@@ -519,4 +508,25 @@ fn exp_list_item(context: &mut Context, item: &mut T::ExpListItem) {
             types(context, ss);
         }
     }
+}
+
+//**************************************************************************************************
+// IDE Information
+//**************************************************************************************************
+
+pub fn ide_info(context: &mut Context) {
+    let mut ide_info = std::mem::replace(&mut context.ide_info, IDEInfo::new());
+    for (_, info) in ide_info.exp_info.iter_mut() {
+        let ide::ExpEntry {
+            loc: _,
+            macro_call_info,
+            expanded_lambda: _,
+        } = info;
+        macro_call_info.as_mut().map(|info| {
+                    for t in info.type_arguments.iter_mut() {
+                        type_(context, t);
+                    }
+        });
+    }
+    let _ = std::mem::replace(&mut context.ide_info, ide_info);
 }
