@@ -129,6 +129,7 @@ const MAX_PROTOCOL_VERSION: u64 = 46;
 //             Enable Leader Scoring & Schedule Change for Mysticeti consensus.
 // Version 46: Enable native bridge in testnet
 //             Enable resharing at the same initial shared version.
+//             Enable VDF in devnet
 
 #[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(u64);
@@ -436,6 +437,10 @@ struct FeatureFlags {
     // Enable resharing of shared objects using the same initial shared version
     #[serde(skip_serializing_if = "is_false")]
     reshare_at_same_initial_version: bool,
+
+    // Enable VDF
+    #[serde(skip_serializing_if = "is_false")]
+    enable_vdf: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -1017,6 +1022,9 @@ pub struct ProtocolConfig {
     // zklogin::check_zklogin_issuer
     check_zklogin_issuer_cost_base: Option<u64>,
 
+    vdf_verify_vdf_cost: Option<u64>,
+    vdf_hash_to_input_cost: Option<u64>,
+
     // Const params for consensus scoring decision
     // The scaling factor property for the MED outlier detection
     scoring_decision_mad_divisor: Option<f64>,
@@ -1320,6 +1328,10 @@ impl ProtocolConfig {
 
     pub fn reshare_at_same_initial_version(&self) -> bool {
         self.feature_flags.reshare_at_same_initial_version
+    }
+
+    pub fn enable_vdf(&self) -> bool {
+        self.feature_flags.enable_vdf
     }
 }
 
@@ -1726,6 +1738,9 @@ impl ProtocolConfig {
             check_zklogin_id_cost_base: None,
             // zklogin::check_zklogin_issuer
             check_zklogin_issuer_cost_base: None,
+
+            vdf_verify_vdf_cost: None,
+            vdf_hash_to_input_cost: None,
 
             max_size_written_objects: None,
             max_size_written_objects_system_tx: None,
@@ -2202,6 +2217,15 @@ impl ProtocolConfig {
 
                     // Enable resharing at same initial version
                     cfg.feature_flags.reshare_at_same_initial_version = true;
+
+                    // enable vdf in devnet
+                    if chain != Chain::Mainnet && chain != Chain::Testnet {
+                        cfg.feature_flags.enable_vdf = true;
+                        // Set to 30x and 2x the cost of a signature verification for now. This
+                        // should be updated along with other native crypto functions.
+                        cfg.vdf_verify_vdf_cost = Some(1500);
+                        cfg.vdf_hash_to_input_cost = Some(100);
+                    }
                 }
                 // Use this template when making changes:
                 //
