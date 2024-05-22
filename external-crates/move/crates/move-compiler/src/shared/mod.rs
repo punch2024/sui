@@ -50,6 +50,7 @@ pub mod unique_map;
 pub mod unique_set;
 
 pub use ast_debug::AstDebug;
+use ide::IDEInfo;
 
 //**************************************************************************************************
 // Numbers
@@ -1178,8 +1179,6 @@ macro_rules! process_binops {
 }
 
 pub(crate) use process_binops;
-
-use self::ide::IDEInfo;
 
 //**************************************************************************************************
 // Virtual file system support
