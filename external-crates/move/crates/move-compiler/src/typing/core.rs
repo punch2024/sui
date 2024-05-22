@@ -22,7 +22,7 @@ use crate::{
     },
     shared::{
         known_attributes::TestingAttribute, program_info::*, string_utils::debug_print,
-        unique_map::UniqueMap, *,
+        unique_map::UniqueMap, *, ide::{IDEInfo, ExpInfo},
     },
     typing::match_compilation,
     FullyCompiledProgram,
@@ -123,6 +123,9 @@ pub struct Context<'env> {
     /// This is to prevent accidentally thinking we are in a recursive call if a macro is used
     /// inside a lambda body
     pub lambda_expansion: Vec<Vec<MacroExpansion>>,
+    /// IDE Info for the current module member. We hold onto this during typing so we can elaborate
+    /// it at the end.
+    pub ide_info: IDEInfo,
 }
 
 pub struct ResolvedFunctionType {
@@ -207,6 +210,7 @@ impl<'env> Context<'env> {
             used_module_members: BTreeMap::new(),
             macro_expansion: vec![],
             lambda_expansion: vec![],
+            ide_info: IDEInfo::new(),
         }
     }
 
@@ -485,6 +489,7 @@ impl<'env> Context<'env> {
         self.max_variable_color = RefCell::new(0);
         self.macro_expansion = vec![];
         self.lambda_expansion = vec![];
+        self.ide_info = IDEInfo::new();
     }
 
     pub fn error_type(&mut self, loc: Loc) -> Type {
@@ -922,6 +927,10 @@ impl<'env> Context<'env> {
         };
         debug_print!(self.debug.autocomplete_resolution, (lines "fields" => &fields; dbg));
         fields
+    }
+
+    pub fn add_ide_exp_info(&mut self, loc: Loc, info: ExpInfo) {
+        self.env.add_to_ide_exp_info(&mut self.ide_info, loc, info);
     }
 }
 
