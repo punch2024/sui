@@ -84,6 +84,7 @@ pub(super) struct TypingDebugFlags {
     pub(super) match_constant_conversion: bool,
     pub(super) autocomplete_resolution: bool,
     pub(super) function_translation: bool,
+    pub(super) type_elaboration: bool,
 }
 
 pub struct Context<'env> {
@@ -188,6 +189,7 @@ impl<'env> Context<'env> {
             match_constant_conversion: false,
             autocomplete_resolution: false,
             function_translation: false,
+            type_elaboration: false,
         };
         Context {
             use_funs: vec![global_use_funs],

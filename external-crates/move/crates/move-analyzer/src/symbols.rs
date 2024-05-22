@@ -108,7 +108,7 @@ use move_compiler::{
         ModuleDefinition, SequenceItem, SequenceItem_, UnannotatedExp_,
     },
     unit_test::filter_test_members::UNIT_TEST_POISON_FUN_NAME,
-    PASS_CFGIR, PASS_PARSER, PASS_TYPING, diagnostics::report_diagnostics,
+    PASS_CFGIR, PASS_PARSER, PASS_TYPING,
 };
 use move_ir_types::location::*;
 use move_package::{

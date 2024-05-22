@@ -3784,7 +3784,6 @@ fn method_call_resolve(
     method: Name,
     ty_args_opt: Option<Vec<Type>>,
 ) -> ResolvedMethodCall {
-    edotted.loc = loc;
     let edotted_ty = core::unfold_type(&context.subst, edotted.last_type());
 
     let Some(tn) = type_to_type_name(context, &edotted_ty, loc, "method call".to_string()) else {
@@ -4249,8 +4248,6 @@ fn macro_method_call(
             ResolvedMethodCall::InvalidBaseType | ResolvedMethodCall::UnknownName => return None,
         };
     let first_arg = *resolve_exp_dotted(context, usage, edotted.loc, edotted);
-    println!("first arg loc: {:#?}", first_arg.exp.loc);
-    println!("call arg : {:#?}", loc);
     let mut args = vec![macro_expand::EvalStrategy::ByValue(first_arg)];
     args.extend(
         nargs

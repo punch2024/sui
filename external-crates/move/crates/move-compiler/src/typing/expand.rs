@@ -12,7 +12,7 @@ use crate::{
     typing::{
         ast::{self as T},
         core::{self, Context},
-    }, shared::ide::{self, IDEInfo},
+    }, shared::{string_utils::debug_print, ide::{self, IDEInfo}, AstDebug},
 };
 use move_core_types::u256::U256;
 use move_ir_types::location::*;
@@ -58,8 +58,10 @@ pub fn type_(context: &mut Context, ty: &mut Type) {
         Anything | UnresolvedError | Param(_) | Unit => (),
         Ref(_, b) => type_(context, b),
         Var(tvar) => {
+            debug_print!(context.debug.type_elaboration, ("before" => Var(*tvar)));
             let ty_tvar = sp(ty.loc, Var(*tvar));
             let replacement = core::unfold_type(&context.subst, ty_tvar);
+            debug_print!(context.debug.type_elaboration, ("resolved" => replacement));
             let replacement = match replacement {
                 sp!(loc, Var(_)) => {
                     let diag = ice!((
@@ -84,7 +86,9 @@ pub fn type_(context: &mut Context, ty: &mut Type) {
                 t => t,
             };
             *ty = replacement;
-            type_(context, ty);
+            let rec_result = type_(context, ty);
+            debug_print!(context.debug.type_elaboration, ("after" => ty));
+            rec_result
         }
         Apply(Some(_), sp!(_, TypeName_::Builtin(_)), tys) => types(context, tys),
         aty @ Apply(Some(_), _, _) => {
@@ -522,11 +526,14 @@ pub fn ide_info(context: &mut Context) {
             macro_call_info,
             expanded_lambda: _,
         } = info;
-        macro_call_info.as_mut().map(|info| {
-                    for t in info.type_arguments.iter_mut() {
-                        type_(context, t);
-                    }
-        });
+        if let Some(info) = macro_call_info {
+            for t in info.type_arguments.iter_mut() {
+                type_(context, t);
+            }
+            for t in info.by_value_args.iter_mut() {
+                sequence_item(context, t);
+            }
+        }
     }
     let _ = std::mem::replace(&mut context.ide_info, ide_info);
 }
