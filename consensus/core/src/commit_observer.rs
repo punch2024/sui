@@ -73,7 +73,7 @@ impl CommitObserver {
             .start_timer();
 
         let committed_sub_dags = self.commit_interpreter.handle_commit(committed_leaders);
-        let mut sent_sub_dags = vec![];
+        let mut sent_sub_dags = Vec::with_capacity(committed_sub_dags.len());
         let reputation_scores_desc = self
             .leader_schedule
             .leader_swap_table
