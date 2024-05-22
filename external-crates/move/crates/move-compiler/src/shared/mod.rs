@@ -658,17 +658,6 @@ impl CompilationEnv {
 
     pub fn append_ide_info(&mut self, info: &mut IDEInfo) {
         self.ide_information.append(&mut self.diags, info);
-        // let Some(ide_info) = std::mem::take(&mut self.ide_information) else {
-        //     self.add_diag(ice!((loc, "No IDE info in the env")));
-        //     return;
-        // };
-        // if self.ide_information.contains_key(&loc) {
-        //     let mut diag = ice!((loc, "Added more IDE information here"));
-        //     diag.add_note(format!("Previous info: {:#?}", self.ide_information.get(&loc)));
-        //     diag.add_note(format!("New info: {:#?}", info));
-        //     self.add_diag(diag);
-        // }
-        // self.ide_information.insert(loc, info);
     }
 
     /// Helper to call `add_exp_info` with the compilation enviornment diagnostics field.
@@ -679,17 +668,6 @@ impl CompilationEnv {
     pub fn add_ide_exp_info(&mut self, loc: Loc, info: ide::ExpInfo) {
         self.ide_information
             .add_exp_info(&mut self.diags, loc, info);
-        // let Some(ide_info) = std::mem::take(&mut self.ide_information) else {
-        //     self.add_diag(ice!((loc, "No IDE info in the env")));
-        //     return;
-        // };
-        // if self.ide_information.contains_key(&loc) {
-        //     let mut diag = ice!((loc, "Added more IDE information here"));
-        //     diag.add_note(format!("Previous info: {:#?}", self.ide_information.get(&loc)));
-        //     diag.add_note(format!("New info: {:#?}", info));
-        //     self.add_diag(diag);
-        // }
-        // self.ide_information.insert(loc, info);
     }
 }
 
