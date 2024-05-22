@@ -2784,7 +2784,13 @@ impl<'a> TypingSymbolicator<'a> {
             } = ide_info.clone();
             if let Some(minfo) = macro_call_info {
                 assert!(expanded_lambda == false, "Analyzer issue");
-                let MacroCallInfo { module, name, method_name, type_arguments, by_value_args } = *minfo;
+                let MacroCallInfo {
+                    module,
+                    name,
+                    method_name,
+                    type_arguments,
+                    by_value_args,
+                } = *minfo;
                 self.mod_call_symbols(&module, name, method_name, &type_arguments, None, scope);
                 by_value_args
                     .iter()

@@ -10,7 +10,7 @@ use crate::{
         self as N, BlockLabel, Color, MatchArm_, TParamID, Type, Type_, UseFuns, Var, Var_,
     },
     parser::ast::FunctionName,
-    shared::{program_info::FunctionInfo, unique_map::UniqueMap, ide::ExpInfo},
+    shared::{ide::ExpInfo, program_info::FunctionInfo, unique_map::UniqueMap},
     typing::{
         ast as T,
         core::{self, TParamSubst},
@@ -1056,7 +1056,10 @@ fn exp(context: &mut Context, sp!(eloc, e_): &mut N::Exp) {
                 seq: (N::UseFuns::new(context.macro_color), result),
             });
             if context.core.env.ide_mode() {
-                context.core.env.add_ide_exp_info(*eloc, ExpInfo::ExpandedLambda);
+                context
+                    .core
+                    .env
+                    .add_ide_exp_info(*eloc, ExpInfo::ExpandedLambda);
             }
             *e_ = block;
         }

@@ -1,7 +1,10 @@
 // Copyright (c) The Move Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{expansion::ast as E, parser::ast as P, shared::Name, naming::ast as N, typing::ast as T, ice, diagnostics::Diagnostics};
+use crate::{
+    diagnostics::Diagnostics, expansion::ast as E, ice, naming::ast as N, parser::ast as P,
+    shared::Name, typing::ast as T,
+};
 
 use move_ir_types::location::Loc;
 
@@ -9,7 +12,7 @@ use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub struct IDEInfo {
-    pub exp_info: BTreeMap<Loc, ExpEntry>
+    pub exp_info: BTreeMap<Loc, ExpEntry>,
 }
 
 #[derive(Debug, Clone)]
@@ -44,7 +47,9 @@ pub struct MacroCallInfo {
 
 impl IDEInfo {
     pub fn new() -> IDEInfo {
-        IDEInfo { exp_info: BTreeMap::new() }
+        IDEInfo {
+            exp_info: BTreeMap::new(),
+        }
     }
 
     pub fn append(&mut self, diags: &mut Diagnostics, other: &mut IDEInfo) {
@@ -64,7 +69,6 @@ impl IDEInfo {
             ExpInfo::MacroCallInfo(minfo) => info.set_macro_call_info(diags, minfo),
             ExpInfo::ExpandedLambda => info.set_expanded_lambda(diags),
         }
-
     }
 
     pub fn get_exp_info(&self, loc: &Loc) -> Option<&ExpEntry> {
@@ -81,14 +85,14 @@ impl ExpEntry {
         }
     }
 
-   pub fn set_expanded_lambda(&mut self, diags: &mut Diagnostics) {
+    pub fn set_expanded_lambda(&mut self, diags: &mut Diagnostics) {
         if self.macro_call_info.is_some() {
             diags.add(ice!((self.loc, "Marked macro call as expanded lambda")))
         }
         self.expanded_lambda = true;
-   }
+    }
 
-   pub fn set_macro_call_info(&mut self, diags: &mut Diagnostics, info: Box<MacroCallInfo>) {
+    pub fn set_macro_call_info(&mut self, diags: &mut Diagnostics, info: Box<MacroCallInfo>) {
         if self.expanded_lambda {
             diags.add(ice!((self.loc, "Marked expanded lambda as macro call")))
         }
@@ -96,14 +100,14 @@ impl ExpEntry {
             diags.add(ice!((self.loc, "Re-defined macro call info")))
         }
         self.macro_call_info = Some(info);
-   }
+    }
 
-   pub fn extend_with(&mut self, diags: &mut Diagnostics, other: ExpEntry) {
-       if other.expanded_lambda {
+    pub fn extend_with(&mut self, diags: &mut Diagnostics, other: ExpEntry) {
+        if other.expanded_lambda {
             self.set_expanded_lambda(diags);
-       }
-       if let Some(minfo) = other.macro_call_info {
+        }
+        if let Some(minfo) = other.macro_call_info {
             self.set_macro_call_info(diags, minfo);
-       }
-   }
+        }
+    }
 }

@@ -9,10 +9,15 @@ use crate::{
     ice,
     naming::ast::{BuiltinTypeName_, FunctionSignature, Type, TypeName_, Type_},
     parser::ast::Ability_,
+    shared::{
+        ide::{self, IDEInfo},
+        string_utils::debug_print,
+        AstDebug,
+    },
     typing::{
         ast::{self as T},
         core::{self, Context},
-    }, shared::{string_utils::debug_print, ide::{self, IDEInfo}, AstDebug},
+    },
 };
 use move_core_types::u256::U256;
 use move_ir_types::location::*;

@@ -7,7 +7,7 @@ use crate::{
     cfgir::visitor::{AbsIntVisitorObj, AbstractInterpreterVisitor},
     command_line as cli,
     diagnostics::{
-codes::{Category, Declarations, DiagnosticsID, Severity, WarningFilter},
+        codes::{Category, Declarations, DiagnosticsID, Severity, WarningFilter},
         Diagnostic, Diagnostics, DiagnosticsFormat, FileName, MappedFiles, WarningFilters,
     },
     editions::{
@@ -677,7 +677,8 @@ impl CompilationEnv {
     }
 
     pub fn add_ide_exp_info(&mut self, loc: Loc, info: ide::ExpInfo) {
-        self.ide_information.add_exp_info(&mut self.diags, loc, info);
+        self.ide_information
+            .add_exp_info(&mut self.diags, loc, info);
         // let Some(ide_info) = std::mem::take(&mut self.ide_information) else {
         //     self.add_diag(ice!((loc, "No IDE info in the env")));
         //     return;
