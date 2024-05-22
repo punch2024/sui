@@ -243,9 +243,6 @@ pub struct CompilationEnv {
     // pub counter: u64,
     mapped_files: MappedFiles,
     save_hooks: Vec<SaveHook>,
-    // /// IDE Information for the Move Analyzer. This is awlays set, but is in an option to allow us
-    // /// to `take` it for updates, which also need the compilation env for reporting ICEs.
-    // pub ide_information: Option<ide::IDEInfo>,
     pub ide_information: IDEInfo,
 }
 
