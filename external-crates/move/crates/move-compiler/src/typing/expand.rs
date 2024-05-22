@@ -91,9 +91,8 @@ pub fn type_(context: &mut Context, ty: &mut Type) {
                 t => t,
             };
             *ty = replacement;
-            let rec_result = type_(context, ty);
+            type_(context, ty);
             debug_print!(context.debug.type_elaboration, ("after" => ty));
-            rec_result
         }
         Apply(Some(_), sp!(_, TypeName_::Builtin(_)), tys) => types(context, tys),
         aty @ Apply(Some(_), _, _) => {

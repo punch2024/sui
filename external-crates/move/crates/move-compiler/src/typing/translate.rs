@@ -4256,19 +4256,18 @@ fn macro_method_call(
     nargs: Vec<N::Exp>,
 ) -> Option<(Type, T::UnannotatedExp_)> {
     let mut edotted = edotted;
-    let (m, f, fty, usage) =
-        match method_call_resolve(context, loc, &mut edotted, method, ty_args_opt) {
-            ResolvedMethodCall::Resolved(m, f, fty, usage) => (*m, f, fty, usage),
-            ResolvedMethodCall::UnknownName if context.env.ide_mode() => {
-                // If the method name fails to resolve, we do autocomplete for the dotted expression.
-                edotted.for_autocomplete = true;
-                let err_ty = context.error_type(loc);
-                let dot_output =
-                    resolve_exp_dotted(context, DottedUsage::Borrow(false), loc, edotted);
-                return Some((err_ty, dot_output.exp.value));
-            }
-            ResolvedMethodCall::InvalidBaseType | ResolvedMethodCall::UnknownName => return None,
-        };
+    let (m, f, fty, usage) = match method_call_resolve(context, loc, &edotted, method, ty_args_opt)
+    {
+        ResolvedMethodCall::Resolved(m, f, fty, usage) => (*m, f, fty, usage),
+        ResolvedMethodCall::UnknownName if context.env.ide_mode() => {
+            // If the method name fails to resolve, we do autocomplete for the dotted expression.
+            edotted.for_autocomplete = true;
+            let err_ty = context.error_type(loc);
+            let dot_output = resolve_exp_dotted(context, DottedUsage::Borrow(false), loc, edotted);
+            return Some((err_ty, dot_output.exp.value));
+        }
+        ResolvedMethodCall::InvalidBaseType | ResolvedMethodCall::UnknownName => return None,
+    };
     let first_arg = *resolve_exp_dotted(context, usage, loc, edotted);
     let mut args = vec![macro_expand::EvalStrategy::ByValue(first_arg)];
     args.extend(

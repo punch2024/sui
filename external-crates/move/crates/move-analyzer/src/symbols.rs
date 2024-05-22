@@ -2783,7 +2783,7 @@ impl<'a> TypingSymbolicator<'a> {
                 expanded_lambda,
             } = ide_info.clone();
             if let Some(minfo) = macro_call_info {
-                assert!(expanded_lambda == false, "Analyzer issue");
+                debug_assert!(!expanded_lambda, "Analyzer issue");
                 let MacroCallInfo {
                     module,
                     name,
