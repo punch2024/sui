@@ -1841,9 +1841,10 @@ fn exp(context: &mut Context, ne: Box<N::Exp>) -> Box<T::Exp> {
 
         NE::ExpDotted(usage, edotted) => {
             let mut out_exp = *exp_dotted_usage(context, usage, eloc, edotted);
-            // This is a hack: if the type location would point to this expression (i.e., not to a
-            // struct field or similar), we watnt to respan it to indicate the entire expression.
-            // If it is instead pointing to some field or function, we preserve that.
+            // If the type location would point to this expression (i.e., not to a struct field or
+            // similar), we watnt to respan it to blame the overall term for a type mismatch
+            // (because it likely has a `&`, `*`, or `&mut `). If the type is from elsewhere,
+            // however, we prefer that location.
             if eloc.contains(&out_exp.ty.loc) {
                 out_exp.ty.loc = eloc;
             }
