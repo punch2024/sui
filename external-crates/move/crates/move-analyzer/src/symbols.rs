@@ -2947,13 +2947,6 @@ impl<'a> TypingSymbolicator<'a> {
                 self.exp_symbols(exp, scope);
                 self.add_type_id_use_def(t);
             }
-            E::AutocompleteDotAccess {
-                base_exp,
-                methods: _,
-                fields: _,
-            } => {
-                self.exp_symbols(base_exp, scope);
-            }
             E::Unit { .. }
             | E::Value(_)
             | E::Continue(_)
