@@ -10,6 +10,7 @@ pub mod uploader;
 mod writer;
 
 use anyhow::Result;
+use fastcrypto::hash::MultisetHash;
 use num_enum::IntoPrimitive;
 use num_enum::TryFromPrimitive;
 use object_store::path::Path;
@@ -21,13 +22,17 @@ use sui_core::authority::epoch_start_configuration::EpochFlag;
 use sui_core::authority::epoch_start_configuration::EpochStartConfiguration;
 use sui_core::checkpoints::CheckpointStore;
 use sui_core::epoch::committee_store::CommitteeStore;
+use sui_core::state_accumulator::accumulate_live_object_iter;
+use sui_protocol_config::{Chain, ProtocolConfig};
 use sui_storage::object_store::util::path_to_filesystem;
 use sui_storage::{compute_sha3_checksum, FileCompression, SHA3_BYTES};
 use sui_types::accumulator::Accumulator;
 use sui_types::base_types::ObjectID;
+use sui_types::messages_checkpoint::ECMHLiveObjectSetDigest;
 use sui_types::sui_system_state::epoch_start_sui_system_state::EpochStartSystemStateTrait;
 use sui_types::sui_system_state::get_sui_system_state;
 use sui_types::sui_system_state::SuiSystemStateTrait;
+use tracing::info;
 
 /// The following describes the format of an object file (*.obj) used for persisting live sui objects.
 /// The maximum size per .obj file is 128MB. State snapshot will be taken at the end of every epoch.
@@ -218,12 +223,16 @@ pub async fn setup_db_state(
     perpetual_db: Arc<AuthorityPerpetualTables>,
     checkpoint_store: Arc<CheckpointStore>,
     committee_store: Arc<CommitteeStore>,
+    chain: Chain,
+    verify: bool,
 ) -> Result<()> {
     // This function should be called once state accumulator based hash verification
     // is complete and live object set state is downloaded to local store
     let system_state_object = get_sui_system_state(&perpetual_db)?;
     let new_epoch_start_state = system_state_object.into_epoch_start_state();
+    let protocol_version = new_epoch_start_state.protocol_version();
     let next_epoch_committee = new_epoch_start_state.get_sui_committee();
+    let root_digest: ECMHLiveObjectSetDigest = accumulator.digest().into();
     let last_checkpoint = checkpoint_store
         .get_epoch_last_checkpoint(epoch)
         .expect("Error loading last checkpoint for current epoch")
@@ -241,6 +250,32 @@ pub async fn setup_db_state(
     perpetual_db.set_highest_pruned_checkpoint_without_wb(last_checkpoint.sequence_number)?;
     committee_store.insert_new_committee(&next_epoch_committee)?;
     checkpoint_store.update_highest_executed_checkpoint(&last_checkpoint)?;
+
+    // TODO add progress bar
+    if verify {
+        eprintln!(
+            "Beginning DB live object state verification. This may take a while, \
+            and currently does not provide progress updates..."
+        );
+        let simplified_unwrap_then_delete = match (chain, epoch) {
+            (Chain::Mainnet, ep) if ep >= 87 => true,
+            (Chain::Mainnet, ep) if ep < 87 => false,
+            (Chain::Testnet, ep) if ep >= 50 => true,
+            (Chain::Testnet, ep) if ep < 50 => false,
+            _ => panic!("Unsupported chain"),
+        };
+        let include_tombstones = !simplified_unwrap_then_delete;
+        let iter = perpetual_db.iter_live_object_set(include_tombstones);
+        let local_digest =
+            ECMHLiveObjectSetDigest::from(accumulate_live_object_iter(Box::new(iter)).digest());
+        assert_eq!(
+            root_digest, local_digest,
+            "End of epoch {} root state digest {} does not match \
+                local root state hash {} after restoring db from formal snapshot",
+            epoch, root_digest.digest, local_digest.digest,
+        );
+        eprintln!("DB live object state verification completed successfully!");
+    }
 
     Ok(())
 }
