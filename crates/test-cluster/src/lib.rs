@@ -7,6 +7,7 @@ use jsonrpsee::core::RpcResult;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use jsonrpsee::ws_client::WsClient;
 use jsonrpsee::ws_client::WsClientBuilder;
+use rand::Rng;
 use rand::{distributions::*, rngs::OsRng, seq::SliceRandom};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -962,6 +963,11 @@ impl TestClusterBuilder {
 
     pub fn with_num_validators(mut self, num: usize) -> Self {
         self.num_validators = Some(num);
+        self
+    }
+
+    pub fn with_random_num_validators(mut self) -> Self {
+        self.num_validators = Some(rand::thread_rng().gen_range(1..=NUM_VALIDATOR));
         self
     }
 
