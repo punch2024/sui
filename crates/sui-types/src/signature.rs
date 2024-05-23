@@ -230,6 +230,10 @@ impl ToFromBytes for GenericSignature {
                     let zk_login = ZkLoginAuthenticator::from_bytes(bytes)?;
                     Ok(GenericSignature::ZkLoginAuthenticator(zk_login))
                 }
+                SignatureScheme::PasskeyAuthenticator => {
+                    let passkey = PasskeyAuthenticator::from_bytes(bytes)?;
+                    Ok(GenericSignature::PasskeyAuthenticator(passkey))
+                }
                 _ => Err(FastCryptoError::InvalidInput),
             },
             Err(_) => Err(FastCryptoError::InvalidInput),

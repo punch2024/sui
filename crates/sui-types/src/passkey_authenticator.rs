@@ -64,7 +64,7 @@ impl PasskeyAuthenticator {
 
     pub fn get_pk(&self) -> SuiResult<PublicKey> {
         PublicKey::try_from_bytes(
-            SignatureScheme::PasskeyAuthenticator,
+            SignatureScheme::Secp256r1,
             self.user_signature.public_key_bytes(),
         )
         .map_err(|_| SuiError::InvalidAuthenticator)
@@ -123,7 +123,9 @@ impl AuthenticatorTrait for PasskeyAuthenticator {
         let digest = hasher.finalize().digest;
 
         if parsed_challenge != digest {
-            return Err(SuiError::InvalidAuthenticator);
+            return Err(SuiError::InvalidSignature {
+                error: "invalid challenge".to_string(),
+            });
         };
 
         let mut message = self.authenticator_data.clone();
