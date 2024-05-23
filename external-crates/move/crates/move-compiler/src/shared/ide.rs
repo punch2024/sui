@@ -2,17 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    diagnostics::Diagnostics, expansion::ast as E, ice, naming::ast as N, parser::ast as P,
-    shared::Name, typing::ast as T,
+    diagnostics::Diagnostics,
+    expansion::ast::{self as E, ModuleIdent},
+    ice,
+    naming::ast as N,
+    parser::ast::{self as P, FunctionName},
+    shared::Name,
+    typing::ast as T,
 };
 
 use move_ir_types::location::Loc;
+use move_symbol_pool::Symbol;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone)]
 pub struct IDEInfo {
     pub exp_info: BTreeMap<Loc, ExpEntry>,
+    pub autocomplete_info: Option<AutocompleteInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AutocompleteInfo {
+    pub methods: BTreeSet<(ModuleIdent, FunctionName)>,
+    pub fields: BTreeSet<Symbol>,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +62,7 @@ impl IDEInfo {
     pub fn new() -> IDEInfo {
         IDEInfo {
             exp_info: BTreeMap::new(),
+            autocomplete_info: None,
         }
     }
 
@@ -61,6 +75,18 @@ impl IDEInfo {
                 self.exp_info.insert(loc, entry);
             }
         }
+    }
+
+    pub fn add_autocomplete_info(
+        &mut self,
+        diags: &mut Diagnostics,
+        loc: Loc,
+        autocomplete_info: AutocompleteInfo,
+    ) {
+        if self.autocomplete_info.is_some() {
+            diags.add(ice!((loc, "Double reported autocomplete info")));
+        }
+        self.autocomplete_info = Some(autocomplete_info);
     }
 
     pub fn add_exp_info(&mut self, diags: &mut Diagnostics, loc: Loc, exp_info: ExpInfo) {

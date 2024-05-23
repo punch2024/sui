@@ -244,6 +244,7 @@ pub struct CompilationEnv {
     mapped_files: MappedFiles,
     save_hooks: Vec<SaveHook>,
     pub ide_information: IDEInfo,
+    ide_cursor_loc: Option<Loc>,
 }
 
 macro_rules! known_code_filter {
@@ -367,6 +368,7 @@ impl CompilationEnv {
             mapped_files: MappedFiles::empty(),
             save_hooks,
             ide_information: IDEInfo::new(),
+            ide_cursor_loc: None,
         }
     }
 
@@ -652,6 +654,29 @@ impl CompilationEnv {
         for hook in &self.save_hooks {
             hook.save_cfgir_ast(ast)
         }
+    }
+
+    // -- IDE INFORMATION CALLS --
+
+    pub fn set_cursor_loc(&mut self, loc: Loc) {
+        self.ide_cursor_loc = Some(loc)
+    }
+
+    pub fn contains_cursor(&mut self, loc: &Loc) -> bool {
+        self.ide_cursor_loc
+            .map(|cloc| cloc.contains(loc))
+            .unwrap_or(false)
+    }
+
+    pub fn overlaps_cursor(&mut self, loc: &Loc) -> bool {
+        self.ide_cursor_loc
+            .map(|cloc| cloc.overlaps(loc))
+            .unwrap_or(false)
+    }
+
+    pub fn add_ide_autocomplete_info(&mut self, loc: Loc, info: ide::AutocompleteInfo) {
+        self.ide_information
+            .add_autocomplete_info(&mut self.diags, loc, info);
     }
 
     pub fn append_ide_info(&mut self, info: &mut IDEInfo) {
