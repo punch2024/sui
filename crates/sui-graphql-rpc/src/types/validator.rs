@@ -14,6 +14,7 @@ use super::sui_address::SuiAddress;
 use super::validator_credentials::ValidatorCredentials;
 use super::{address::Address, base64::Base64};
 use async_graphql::*;
+use sui_types::sui_system_state::sui_system_state_summary::SuiSystemStateSummary as NativeSuiSystemStateSummary;
 use sui_types::sui_system_state::sui_system_state_summary::SuiValidatorSummary as NativeSuiValidatorSummary;
 
 #[derive(Clone, Debug)]
@@ -23,6 +24,9 @@ pub(crate) struct Validator {
     pub report_records: Option<Vec<Address>>,
     /// The checkpoint sequence number at which this was viewed at.
     pub checkpoint_viewed_at: u64,
+    /// The epoch at which this validator's information was requested to be viewed at.
+    pub requested_for_epoch: Option<u64>,
+    pub latest_sui_system_state: NativeSuiSystemStateSummary,
 }
 
 type CAddr = JsonCursor<ConsistentIndexCursor>;
@@ -268,7 +272,11 @@ impl Validator {
     async fn apy(&self, ctx: &Context<'_>) -> Result<Option<u64>, Error> {
         Ok(ctx
             .data_unchecked::<PgManager>()
-            .fetch_validator_apys(&self.validator_summary.sui_address)
+            .fetch_validator_apys(
+                &self.latest_sui_system_state,
+                self.requested_for_epoch,
+                &self.validator_summary.sui_address,
+            )
             .await?
             .map(|x| (x * 10000.0) as u64))
     }
