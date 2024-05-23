@@ -165,8 +165,6 @@ pub struct ValidatorServiceMetrics {
     num_rejected_tx_during_overload: IntCounterVec,
     num_rejected_cert_during_overload: IntCounterVec,
     connection_ip_not_found: IntCounter,
-    forwarded_header_parse_error: IntCounter,
-    forwarded_header_invalid: IntCounter,
 }
 
 impl ValidatorServiceMetrics {
@@ -242,18 +240,6 @@ impl ValidatorServiceMetrics {
             connection_ip_not_found: register_int_counter_with_registry!(
                 "validator_service_connection_ip_not_found",
                 "Number of times connection IP was not extractable from request",
-                registry,
-            )
-            .unwrap(),
-            forwarded_header_parse_error: register_int_counter_with_registry!(
-                "validator_service_forwarded_header_parse_error",
-                "Number of times x-forwarded-for header could not be parsed",
-                registry,
-            )
-            .unwrap(),
-            forwarded_header_invalid: register_int_counter_with_registry!(
-                "validator_service_forwarded_header_invalid",
-                "Number of times x-forwarded-for header was invalid",
                 registry,
             )
             .unwrap(),
@@ -732,12 +718,10 @@ impl ValidatorService {
     async fn handle_traffic_req(
         &self,
         connection_ip: Option<SocketAddr>,
-        proxy_ip: Option<SocketAddr>,
     ) -> Result<(), tonic::Status> {
         if let Some(traffic_controller) = &self.traffic_controller {
             let connection = connection_ip.map(|ip| ip.ip());
-            let proxy = proxy_ip.map(|ip| ip.ip());
-            if !traffic_controller.check(connection, proxy).await {
+            if !traffic_controller.check(connection, None).await {
                 // Entity in blocklist
                 Err(tonic::Status::from_error(SuiError::TooManyRequests.into()))
             } else {
@@ -751,7 +735,6 @@ impl ValidatorService {
     fn handle_traffic_resp<T>(
         &self,
         connection_ip: Option<SocketAddr>,
-        proxy_ip: Option<SocketAddr>,
         response: &Result<tonic::Response<T>, tonic::Status>,
     ) {
         let error: Option<SuiError> = if let Err(status) = response {
@@ -763,7 +746,7 @@ impl ValidatorService {
         if let Some(traffic_controller) = self.traffic_controller.clone() {
             traffic_controller.tally(TrafficTally {
                 connection_ip: connection_ip.map(|ip| ip.ip()),
-                proxy_ip: proxy_ip.map(|ip| ip.ip()),
+                proxy_ip: None,
                 error_weight: error.map(normalize).unwrap_or(Weight::zero()),
                 timestamp: SystemTime::now(),
             })
@@ -803,9 +786,6 @@ fn normalize(err: SuiError) -> Weight {
 #[macro_export]
 macro_rules! handle_with_decoration {
     ($self:ident, $func_name:ident, $request:ident) => {{
-        // extract IP info. Note that in addition to extracting the client IP from
-        // the request header, we also get the remote address in case we need to
-        // throttle a fullnode, or an end user is running a local quorum driver.
         let connection_ip: Option<SocketAddr> = $request.remote_addr();
 
         // We will hit this case if the IO type used does not
@@ -824,36 +804,12 @@ macro_rules! handle_with_decoration {
             }
         }
 
-        let proxy_ip: Option<SocketAddr> =
-            if let Some(op) = $request.metadata().get("x-forwarded-for") {
-                match op.to_str() {
-                    Ok(ip) => match ip.parse() {
-                        Ok(ret) => Some(ret),
-                        Err(e) => {
-                            $self.metrics.forwarded_header_parse_error.inc();
-                            error!("Failed to parse x-forwarded-for header value to SocketAddr: {:?}", e);
-                            None
-                        }
-                    },
-                    Err(e) => {
-                        // TODO: once we have confirmed that no legitimate traffic
-                        // is hitting this case, we should reject such requests that
-                        // hit this case.
-                        $self.metrics.forwarded_header_invalid.inc();
-                        error!("Invalid UTF-8 in x-forwarded-for header: {:?}", e);
-                        None
-                    }
-                }
-            } else {
-                None
-            };
-
-        // check if either IP is blocked, in which case return early
-        $self.handle_traffic_req(connection_ip, proxy_ip).await?;
+        // check if IP is blocked, in which case return early
+        $self.handle_traffic_req(connection_ip).await?;
         // handle request
         let response = $self.$func_name($request).await;
         // handle response tallying
-        $self.handle_traffic_resp(connection_ip, proxy_ip, &response);
+        $self.handle_traffic_resp(connection_ip, &response);
         response
     }};
 }
